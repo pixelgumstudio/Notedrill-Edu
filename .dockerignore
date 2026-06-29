@@ -1,0 +1,7 @@
+node_modules
+api/node_modules
+web/node_modules
+packages/**/node_modules
+.next
+dist
+*.log

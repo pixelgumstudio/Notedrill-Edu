@@ -1,0 +1,26 @@
+{
+  "name": "notedrill-edu",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "api",
+    "notedrill-edu",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev --workspace=api",
+    "dev:web": "npm run dev --workspace=notedrill-edu",
+    "dev:docker": "docker compose -f docker-compose.dev.yml up --build",
+    "build:api": "npm run build --workspace=api",
+    "build:web": "npm run build --workspace=notedrill-edu",
+    "typecheck:api": "npm run typecheck --workspace=api",
+    "typecheck:web": "npm run typecheck --workspace=notedrill-edu"
+  },
+  "overrides": {
+    "ioredis": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
+}

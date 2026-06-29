@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "node",
+    "baseUrl": ".",
+    "paths": {
+      "@notedrill/validation": ["../../packages/validation/dist", "../../packages/validation/src"],
+      "@notedrill/validation/*": ["../../packages/validation/dist/*", "../../packages/validation/src/*"],
+      "@notedrill/shared": ["../../packages/shared/dist", "../../packages/shared/src"],
+      "@notedrill/shared/*": ["../../packages/shared/dist/*", "../../packages/shared/src/*"],
+      "@notedrill/types": ["../../packages/types/dist", "../../packages/types/src"],
+      "@notedrill/types/*": ["../../packages/types/dist/*", "../../packages/types/src/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "src/tests/**", "tests/**"],
+  "ts-node": {
+    "esm": false,
+    "transpileOnly": true
+  }
+}

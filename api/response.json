@@ -1,0 +1,72 @@
+{
+  "kind": "youtube#videoListResponse",
+  "etag": "sAh5yVovI87_bD_z5RrQ3Oq7DOw",
+  "items": [
+    {
+      "kind": "youtube#video",
+      "etag": "gjMy0Sw91aPzYNckHH7HqkVUfek",
+      "id": "vMSj3-wWk1g",
+      "snippet": {
+        "publishedAt": "2025-12-06T15:42:33Z",
+        "channelId": "UCvaIj05jvikDeYCBpMqf_AA",
+        "title": "Nigerians Speak Only Sarcasm",
+        "description": "Nigerians are known for their sharp humor and quick sarcastic replies. In this video, I break down why Nigerians speak sarcasm so naturally, how it became part of our culture, and why it shows up in everyday conversations. Watch to understand the real reason behind Nigeria’s love for sarcasm.",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/vMSj3-wWk1g/default.jpg",
+            "width": 120,
+            "height": 90
+          },
+          "medium": {
+            "url": "https://i.ytimg.com/vi/vMSj3-wWk1g/mqdefault.jpg",
+            "width": 320,
+            "height": 180
+          },
+          "high": {
+            "url": "https://i.ytimg.com/vi/vMSj3-wWk1g/hqdefault.jpg",
+            "width": 480,
+            "height": 360
+          },
+          "standard": {
+            "url": "https://i.ytimg.com/vi/vMSj3-wWk1g/sddefault.jpg",
+            "width": 640,
+            "height": 480
+          },
+          "maxres": {
+            "url": "https://i.ytimg.com/vi/vMSj3-wWk1g/maxresdefault.jpg",
+            "width": 1280,
+            "height": 720
+          }
+        },
+        "channelTitle": "NaijaMind TV\n",
+        "categoryId": "22",
+        "liveBroadcastContent": "none",
+        "defaultLanguage": "en",
+        "localized": {
+          "title": "Nigerians Speak Only Sarcasm",
+          "description": "Nigerians are known for their sharp humor and quick sarcastic replies. In this video, I break down why Nigerians speak sarcasm so naturally, how it became part of our culture, and why it shows up in everyday conversations. Watch to understand the real reason behind Nigeria’s love for sarcasm."
+        },
+        "defaultAudioLanguage": "en"
+      },
+      "contentDetails": {
+        "duration": "PT8M43S",
+        "dimension": "2d",
+        "definition": "hd",
+        "caption": "false",
+        "licensedContent": true,
+        "contentRating": {},
+        "projection": "rectangular"
+      },
+      "statistics": {
+        "viewCount": "349685",
+        "likeCount": "9065",
+        "favoriteCount": "0",
+        "commentCount": "1369"
+      }
+    }
+  ],
+  "pageInfo": {
+    "totalResults": 1,
+    "resultsPerPage": 1
+  }
+}

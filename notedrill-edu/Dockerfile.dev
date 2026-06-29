@@ -1,0 +1,21 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy workspace manifests so npm install resolves all workspaces
+COPY package*.json ./
+COPY api/package*.json ./api/
+COPY notedrill-edu/package*.json ./notedrill-edu/
+COPY packages/shared/package*.json ./packages/shared/
+COPY packages/types/package*.json ./packages/types/
+COPY packages/validation/package*.json ./packages/validation/
+
+# Install all deps (devDeps included — tailwind plugins needed at build time)
+RUN npm install
+
+# Copy full source; volume mounts in compose will shadow notedrill-edu/src at runtime
+COPY . .
+
+WORKDIR /app/notedrill-edu
+
+CMD ["npm", "run", "dev"]

@@ -1,0 +1,23 @@
+FROM node:20-alpine
+
+# Required for bcrypt native module compilation
+RUN apk add --no-cache python3 make g++
+
+WORKDIR /app
+
+# Copy workspace manifests so npm install resolves all workspaces
+COPY package*.json ./
+COPY api/package*.json ./api/
+COPY packages/shared/package*.json ./packages/shared/
+COPY packages/types/package*.json ./packages/types/
+COPY packages/validation/package*.json ./packages/validation/
+
+# Install everything (devDeps needed for ts-node + nodemon)
+RUN npm install
+
+# Copy full source; volume mounts in compose will shadow api/src + packages at runtime
+COPY . .
+
+WORKDIR /app/api
+
+CMD ["npm", "run", "dev"]
