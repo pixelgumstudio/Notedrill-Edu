@@ -1,0 +1,14 @@
+{$DOMAIN} {
+    # API routes go to Express
+    handle /api/* {
+        reverse_proxy api:8081
+    }
+    handle /health* {
+        reverse_proxy api:8081
+    }
+
+    # Everything else goes to Next.js
+    handle {
+        reverse_proxy web:3002
+    }
+}

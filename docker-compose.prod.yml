@@ -1,0 +1,103 @@
+services:
+
+  # ─────────────────────────────────────────────
+  # Reverse proxy + automatic SSL (Let's Encrypt)
+  # ─────────────────────────────────────────────
+  caddy:
+    image: caddy:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - web
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # Express API
+  # ─────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    env_file:
+      - api/.env
+    depends_on:
+      - redis
+      - qdrant
+      - minio
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # Transcription worker (BullMQ consumer)
+  # ─────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    command: ["node", "api/dist/worker/transcription.worker.js"]
+    env_file:
+      - api/.env
+    depends_on:
+      - redis
+      - qdrant
+      - minio
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # Next.js frontend
+  # ─────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: notedrill-edu/Dockerfile
+      args:
+        # Set NEXT_PUBLIC_API_URL in your root .env file on the server
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # Redis (BullMQ queues)
+  # ─────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # Qdrant (vector database)
+  # ─────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # MinIO (file storage — S3-compatible)
+  # ─────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  qdrant_data:
+  minio_data:
+  caddy_data:
+  caddy_config:

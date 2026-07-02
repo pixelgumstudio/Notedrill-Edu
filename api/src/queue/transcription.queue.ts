@@ -5,7 +5,7 @@ import IORedis from 'ioredis';
 const connection = new IORedis(process.env.REDIS_URL as string, {
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
-  tls: {},
+  ...(process.env.REDIS_URL?.startsWith('rediss://') ? { tls: {} } : {}),
   retryStrategy: (times: number) => {
     if (times > 3) {
       console.error('❌ Redis connection failed after 3 retries');
