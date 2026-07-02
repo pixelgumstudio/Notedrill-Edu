@@ -1,5 +1,8 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
+export type OrgSubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'canceled' | 'unpaid';
+export type OrgPaymentGateway = 'paystack' | 'polar' | null;
+
 export interface IOrg extends Document {
   name: string;
   schoolType: 'university' | 'secondary' | 'primary' | 'tutoring_center' | 'other';
@@ -13,6 +16,16 @@ export interface IOrg extends Document {
   domain?: string;
   adminEmail: string;
   isVerified: boolean;
+  /** ISO 3166-1 alpha-2 code (e.g. 'NG'). Drives Paystack-vs-Polar routing in billing.controller.ts. */
+  registeredCountry: string;
+  // ── Subscription state ──────────────────────────────────────────────────
+  subscriptionStatus: OrgSubscriptionStatus;
+  trialEndsAt?: Date;
+  currentPeriodEnd?: Date;
+  // ── Gateway-agnostic external references ────────────────────────────────
+  paymentGateway: OrgPaymentGateway;
+  gatewayCustomerId?: string;
+  gatewaySubscriptionId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -78,6 +91,35 @@ const OrgSchema = new Schema<IOrg>(
       type: Boolean,
       default: false,
     },
+    // Defaults to 'NG' since org registration doesn't collect a country yet
+    // and every existing org is Nigeria-based; see billing.controller.ts.
+    registeredCountry: {
+      type: String,
+      default: 'NG',
+      trim: true,
+    },
+    subscriptionStatus: {
+      type: String,
+      enum: ['trialing', 'active', 'past_due', 'canceled', 'unpaid'],
+      default: 'trialing',
+    },
+    trialEndsAt: {
+      type: Date,
+    },
+    currentPeriodEnd: {
+      type: Date,
+    },
+    paymentGateway: {
+      type: String,
+      enum: ['paystack', 'polar', null],
+      default: null,
+    },
+    gatewayCustomerId: {
+      type: String,
+    },
+    gatewaySubscriptionId: {
+      type: String,
+    },
   },
   {
     timestamps: true,
@@ -86,5 +128,15 @@ const OrgSchema = new Schema<IOrg>(
 
 OrgSchema.index({ adminEmail: 1 });
 OrgSchema.index({ domain: 1 }, { sparse: true });
+
+// New orgs get a 14-day trial window, stamped once at creation and persisted
+// (not a schema-level default, which would silently recompute on every read
+// for legacy documents missing the field instead of preserving the original date).
+OrgSchema.pre('save', function (next) {
+  if (this.isNew && !this.trialEndsAt) {
+    this.trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+  }
+  next();
+});
 
 export const Org = mongoose.model<IOrg>('Org', OrgSchema);

@@ -21,6 +21,7 @@
     "@notedrill/types": "*",
     "@notedrill/validation": "*",
     "@pinecone-database/pinecone": "^1.1.0",
+    "@polar-sh/sdk": "^0.48.1",
     "@qdrant/js-client-rest": "^1.16.1",
     "@types/axios": "^0.9.36",
     "@types/ioredis": "^4.28.10",
