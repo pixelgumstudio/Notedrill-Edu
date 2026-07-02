@@ -2,6 +2,7 @@
 
 import { useSidebar } from "@/context/SidebarContext";
 import AppSidebar from "@/layout/AppSidebar";
+import ProtectedRoute from "@/components/edu/auth/ProtectedRoute";
 
 function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
@@ -25,5 +26,9 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  return <AdminLayoutInner>{children}</AdminLayoutInner>;
+  return (
+    <ProtectedRoute requiredRole="superadmin">
+      <AdminLayoutInner>{children}</AdminLayoutInner>
+    </ProtectedRoute>
+  );
 }

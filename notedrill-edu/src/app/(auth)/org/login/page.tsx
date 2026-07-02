@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -31,8 +32,19 @@ export default function OrgLoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center p-4 md:p-8">
       <div className="w-full max-w-sm">
+        <div className="mb-6 flex justify-center">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 text-sm text-edu-blue-grey transition-colors hover:text-edu-moss"
+          >
+            <span aria-hidden="true">←</span> Back to Home
+          </Link>
+        </div>
+
         <div className="mb-8 flex flex-col items-center gap-2 text-center">
-          <BrandMark size="lg" />
+          <Link href="/">
+            <BrandMark size="lg" />
+          </Link>
           <h1 className="mt-4 text-2xl font-semibold text-edu-ink font-source-serif">
             Organisation Sign In
           </h1>

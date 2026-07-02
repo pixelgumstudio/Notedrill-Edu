@@ -6,13 +6,15 @@ import { useAuth } from "@/context/AuthContext";
 
 interface ProtectedRouteProps {
   /** Which role is required to access the wrapped section. */
-  requiredRole: "org_admin" | "student";
+  requiredRole: "org_admin" | "student" | "superadmin";
   children: React.ReactNode;
 }
 
 const LOGIN_PATHS: Record<ProtectedRouteProps["requiredRole"], string> = {
   org_admin: "/org/login",
   student: "/student/login",
+  // Superadmins authenticate through the same org OTP flow as org admins.
+  superadmin: "/org/login",
 };
 
 /**
@@ -27,10 +29,15 @@ const LOGIN_PATHS: Record<ProtectedRouteProps["requiredRole"], string> = {
  *   3. If allowed: render children. If not: router.replace(loginPath).
  */
 export default function ProtectedRoute({ requiredRole, children }: ProtectedRouteProps) {
-  const { isHydrated, isOrgAdmin, isStudent } = useAuth();
+  const { isHydrated, isOrgAdmin, isStudent, isSuperAdmin } = useAuth();
   const router = useRouter();
 
-  const allowed = requiredRole === "org_admin" ? isOrgAdmin : isStudent;
+  const allowed =
+    requiredRole === "org_admin"
+      ? isOrgAdmin
+      : requiredRole === "student"
+        ? isStudent
+        : isSuperAdmin;
 
   useEffect(() => {
     if (!isHydrated) return;

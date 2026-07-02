@@ -13,8 +13,6 @@ import type {
   OrgStudent,
   OrgDashboardMetrics,
   OrgStudentActivity,
-  OrgFile,
-  GeneratedSet,
   NoteDetail,
   AdminGeneratedQuiz,
   AdminGeneratedFlashcardSet,
@@ -122,6 +120,13 @@ export type OtpVerifyResponse = {
 /** Returned by POST /org/student/login/verify */
 export type StudentVerifyResponse = OtpVerifyResponse;
 
+/** Returned by POST /org/students/bulk */
+export type BulkStudentUploadResult = {
+  successCount: number;
+  failureCount: number;
+  errors: { email: string; reason: string }[];
+};
+
 export type StudentLoginRequest = { email: string };
 export type StudentLoginResponse = { email: string; orgId: string; expiresIn: number };
 
@@ -200,17 +205,15 @@ export const orgApi = {
   removeOrgStudent: (token: string, id: string): Promise<null> =>
     orgFetch<null>(`/students/${id}`, { method: 'DELETE', token }),
 
-  /** All org files. GET /org/files */
-  getOrgFiles: (token: string): Promise<OrgFile[]> =>
-    orgFetch<OrgFile[]>('/files', { token }),
-
-  /** Single file with generated sets. GET /org/files/:id */
-  getOrgFile: (token: string, id: string): Promise<OrgFile & { sets: GeneratedSet[] }> =>
-    orgFetch<OrgFile & { sets: GeneratedSet[] }>(`/files/${id}`, { token }),
-
-  /** Delete a generated set. DELETE /org/sets/:id */
-  deleteGeneratedSet: (token: string, setId: string): Promise<null> =>
-    orgFetch<null>(`/sets/${setId}`, { method: 'DELETE', token }),
+  /**
+   * Bulk-invite students from a CSV file (columns: email, firstName, lastName?).
+   * POST /org/students/bulk
+   */
+  addOrgStudentsBulk: (token: string, file: File): Promise<BulkStudentUploadResult> => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return uploadFetch<BulkStudentUploadResult>('/org/students/bulk', token, fd);
+  },
 
   // ── Note ingestion & retrieval ────────────────────────────────────────────
 
@@ -347,6 +350,14 @@ export const orgApi = {
         difficulty: opts.difficulty ?? 'medium',
       }),
     }),
+
+  /** Delete a quiz. DELETE /quizzes/:id */
+  deleteQuiz: (token: string, quizId: string): Promise<{ success: boolean; message: string }> =>
+    baseFetch(`/quizzes/${quizId}`, { method: 'DELETE', token }),
+
+  /** Delete a flashcard set. DELETE /flashcards/:setId */
+  deleteFlashcardSet: (token: string, setId: string): Promise<{ success: boolean; message: string }> =>
+    baseFetch(`/flashcards/${setId}`, { method: 'DELETE', token }),
 
   /**
    * Export quiz with full answers. GET /quizzes/:id/export/answers
