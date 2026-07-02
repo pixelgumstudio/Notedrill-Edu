@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ProgressSteps from "@/components/edu/ProgressSteps";
 import FlashcardViewer from "@/components/edu/FlashcardViewer";
 import QuizReviewer from "@/components/edu/QuizReviewer";
+import EduBackButton from "@/components/edu/EduBackButton";
 import { orgApi } from "@/lib/org-api";
 import { useAuth } from "@/context/AuthContext";
 import type {
@@ -615,16 +615,29 @@ export default function FileWorkspacePage() {
     setExportOpen(false);
   };
 
-  const handleDeleteSet = (id: string) => {
+  const handleDeleteSet = async (id: string) => {
+    const set = localSets.find((s) => s.id === id);
+    if (!set) {
+      setDeleteOpen(null);
+      return;
+    }
+
+    try {
+      if (set.type === "quiz") {
+        await orgApi.deleteQuiz(orgToken ?? "", id);
+      } else {
+        await orgApi.deleteFlashcardSet(orgToken ?? "", id);
+      }
+    } catch {
+      showToast("Could not delete set — please try again");
+      setDeleteOpen(null);
+      return;
+    }
+
     setLocalSets((prev) => prev.filter((s) => s.id !== id));
     setSetContents((prev) => { const next = { ...prev }; delete next[id]; return next; });
-    if (id === activeQuizId) {
-      orgApi.deleteGeneratedSet(orgToken ?? "", id).catch(() => {});
-      setActiveQuizId(null);
-    } else if (id === activeFlashId) {
-      orgApi.deleteGeneratedSet(orgToken ?? "", id).catch(() => {});
-      setActiveFlashId(null);
-    }
+    if (id === activeQuizId) setActiveQuizId(null);
+    if (id === activeFlashId) setActiveFlashId(null);
     setDeleteOpen(null);
     showToast("Set deleted");
   };
@@ -650,12 +663,7 @@ export default function FileWorkspacePage() {
       </div>
 
       <div className="px-6 py-6 md:px-8">
-        <Link
-          href="/edu/upload"
-          className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-edu-moss hover:underline"
-        >
-          ← Back to files
-        </Link>
+        <EduBackButton href="/edu/upload" label="Back to files" className="mb-4" />
 
         {/* Teacher badge */}
         <div className="mb-5 inline-flex items-center gap-1.5 rounded-lg bg-edu-gold-light px-3 py-1.5 text-[12px] font-bold text-[#8A5A18]">

@@ -1,8 +1,9 @@
 "use client";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useSidebar } from "@/context/SidebarContext";
+import { useAuth } from "@/context/AuthContext";
 import {
   ChevronDownIcon,
   GridIcon,
@@ -33,6 +34,13 @@ const navItems: NavItem[] = [
 const AppSidebar = (): React.JSX.Element => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const pathname = usePathname();
+  const router = useRouter();
+  const { logout } = useAuth();
+
+  const handleSignOut = () => {
+    logout();
+    router.push("/org/login");
+  };
 
   const [openSubmenu, setOpenSubmenu] = useState<{ index: number } | null>(null);
   const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>({});
@@ -74,7 +82,7 @@ const AppSidebar = (): React.JSX.Element => {
         </Link>
       </div>
 
-      <div className="flex flex-col overflow-y-auto duration-300 ease-linear no-scrollbar">
+      <div className="flex flex-1 flex-col overflow-y-auto duration-300 ease-linear no-scrollbar">
         <nav className="mb-6">
           <div className="flex flex-col gap-4">
             <div>
@@ -146,6 +154,20 @@ const AppSidebar = (): React.JSX.Element => {
             </div>
           </div>
         </nav>
+      </div>
+
+      <div className="border-t border-gray-200 py-4 dark:border-gray-800">
+        <button
+          onClick={handleSignOut}
+          className={`menu-item group menu-item-inactive w-full cursor-pointer ${
+            !isExpanded && !isHovered && !isMobileOpen ? "lg:justify-center" : "lg:justify-start"
+          }`}
+        >
+          <span className="menu-item-icon-inactive">↩</span>
+          {(isExpanded || isHovered || isMobileOpen) && (
+            <span className="menu-item-text">Sign out</span>
+          )}
+        </button>
       </div>
     </aside>
   );

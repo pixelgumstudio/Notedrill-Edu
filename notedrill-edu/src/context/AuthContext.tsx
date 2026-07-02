@@ -60,6 +60,7 @@ export interface AuthContextValue {
   role: "student" | "org_admin" | "superadmin" | null;
   isOrgAdmin: boolean;
   isStudent: boolean;
+  isSuperAdmin: boolean;
   /** True if either token is present and unexpired. */
   isAuthenticated: boolean;
   /** Call after org admin OTP verify — stores the JWT. */
@@ -139,6 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const role = activePayload.role ?? null;
   const isOrgAdmin = role === "org_admin";
   const isStudent = role === "student";
+  const isSuperAdmin = role === "superadmin";
   const isAuthenticated = !!(orgToken || studentToken);
 
   return (
@@ -154,6 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role,
         isOrgAdmin,
         isStudent,
+        isSuperAdmin,
         isAuthenticated,
         loginAsOrg,
         loginAsStudent,

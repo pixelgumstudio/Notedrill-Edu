@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import QuizCard from "@/components/edu/QuizCard";
 import QuizNavRow from "@/components/edu/QuizNavRow";
+import EduBackButton from "@/components/edu/EduBackButton";
 import { studentApi } from "@/lib/student-api";
 import { useAuth } from "@/context/AuthContext";
 import type { QuizQuestion } from "@/types/edu";
@@ -129,9 +129,7 @@ export default function QuizTakingPage() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-edu-paper p-8 text-center">
         <p className="text-edu-blue-grey">Could not load quiz. It may be unavailable.</p>
-        <Link href={`/learn/files/${noteId}`} className="rounded-lg bg-edu-moss px-5 py-2.5 text-sm font-bold text-white hover:bg-edu-moss-dark">
-          Back to file
-        </Link>
+        <EduBackButton href={`/learn/files/${noteId}`} label="Back to file" />
       </div>
     );
   }
@@ -146,12 +144,7 @@ export default function QuizTakingPage() {
           <h1 className="font-source-serif text-[18px] text-edu-moss-dark">{quiz.title}</h1>
           <p className="mt-0.5 text-sm text-edu-blue-grey">Quiz in progress</p>
         </div>
-        <Link
-          href={`/learn/files/${noteId}`}
-          className="rounded-lg border-[1.5px] border-edu-line bg-transparent px-3 py-1.5 text-sm font-bold text-edu-blue-grey hover:bg-edu-paper-2"
-        >
-          Exit quiz
-        </Link>
+        <EduBackButton href={`/learn/files/${noteId}`} label="Exit quiz" />
       </div>
 
       <div className="mx-auto max-w-[700px] px-5 py-9 md:px-8">

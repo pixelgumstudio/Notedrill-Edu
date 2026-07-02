@@ -72,7 +72,9 @@ const OTP_EXPIRY_MINUTES = 10;
  */
 export async function inviteStudentToOrg(
   orgId: string,
-  email: string
+  email: string,
+  firstName?: string,
+  lastName?: string
 ): Promise<{ email: string; expiresIn: number }> {
   const org = await Org.findById(orgId);
   if (!org) throw Object.assign(new Error('Organisation not found.'), { status: 404 });
@@ -87,7 +89,15 @@ export async function inviteStudentToOrg(
 
   const otp = generateOTP();
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
-  await OTP.create({ email: email.toLowerCase().trim(), otp, type: 'org_invite', expiresAt, orgId });
+  await OTP.create({
+    email: email.toLowerCase().trim(),
+    otp,
+    type: 'org_invite',
+    expiresAt,
+    orgId,
+    firstName: firstName?.trim() || undefined,
+    lastName: lastName?.trim() || undefined,
+  });
 
   const sent = await sendOTPEmail(email, otp, 'signup');
   if (!sent) throw Object.assign(new Error('Failed to send invite email. Please try again.'), { status: 502 });

@@ -149,9 +149,10 @@ export const verifyStudentLoginOTP = async (req: Request, res: Response): Promis
         return;
       }
       const username = normalizedEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '') + '_' + Math.random().toString(36).slice(2, 6);
+      const invitedName = [otpRecord.firstName, otpRecord.lastName].filter(Boolean).join(' ').trim();
       user = new User({
         email: normalizedEmail,
-        name: username,
+        name: invitedName || username,
         username,
         orgId: new Types.ObjectId(otpRecord.orgId),
         role: 'student',

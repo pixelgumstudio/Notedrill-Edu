@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import StudentsTable from "@/components/edu/StudentsTable";
-import { orgApi } from "@/lib/org-api";
+import { orgApi, type BulkStudentUploadResult } from "@/lib/org-api";
 import { useAuth } from "@/context/AuthContext";
 import type { OrgStudent } from "@/types/edu";
 
@@ -19,6 +19,9 @@ export default function StudentsPage() {
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
   const [addStudentOpen, setAddStudentOpen] = useState(false);
   const [addEmail, setAddEmail] = useState("");
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
+  const [bulkFile, setBulkFile] = useState<File | null>(null);
+  const [bulkResult, setBulkResult] = useState<BulkStudentUploadResult | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const { orgToken } = useAuth();
@@ -52,11 +55,43 @@ export default function StudentsPage() {
     onError: (err: Error) => showToast(err.message || "Failed to remove student"),
   });
 
+  const bulkUploadMutation = useMutation({
+    mutationFn: (file: File) => orgApi.addOrgStudentsBulk(orgToken ?? "", file),
+    onSuccess: (result) => {
+      setBulkResult(result);
+      setBulkFile(null);
+      queryClient.invalidateQueries({ queryKey: ["org-students"] });
+      showToast(
+        result.failureCount === 0
+          ? `Successfully invited ${result.successCount} student${result.successCount === 1 ? "" : "s"}!`
+          : `Invited ${result.successCount} student${result.successCount === 1 ? "" : "s"} — ${result.failureCount} failed.`
+      );
+    },
+    onError: (err: Error) => showToast(err.message || "Bulk upload failed"),
+  });
+
   const displayed = students ?? [];
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2600);
+  };
+
+  const closeBulkModal = () => {
+    setBulkUploadOpen(false);
+    setBulkFile(null);
+    setBulkResult(null);
+  };
+
+  const handleDownloadTemplate = () => {
+    const csvContent = "firstName,lastName,email\nJane,Doe,jane.doe@school.edu\n";
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "student-upload-template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -69,12 +104,20 @@ export default function StudentsPage() {
             {isLoading ? "Loading…" : `${displayed.length} students`}
           </p>
         </div>
-        <button
-          className="rounded-lg bg-edu-moss px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-edu-moss-dark"
-          onClick={() => setAddStudentOpen(true)}
-        >
-          + Add student
-        </button>
+        <div className="flex gap-2.5">
+          <button
+            className="rounded-lg bg-edu-paper-2 px-3 py-2 text-sm font-bold text-edu-blue-grey transition-colors hover:bg-edu-line"
+            onClick={() => setBulkUploadOpen(true)}
+          >
+            Bulk Upload CSV
+          </button>
+          <button
+            className="rounded-lg bg-edu-moss px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-edu-moss-dark"
+            onClick={() => setAddStudentOpen(true)}
+          >
+            + Add student
+          </button>
+        </div>
       </div>
 
       <div className="px-6 py-6 md:px-8">
@@ -154,6 +197,77 @@ export default function StudentsPage() {
               >
                 {addStudentMutation.isPending ? "Sending…" : "Add student"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Upload CSV Modal */}
+      {bulkUploadOpen && (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-edu-moss-dark/45 p-5"
+          onClick={(e) => e.currentTarget === e.target && closeBulkModal()}
+        >
+          <div className="w-full max-w-[480px] rounded-xl bg-white p-7" style={{ boxShadow: "0 10px 40px rgba(0,0,0,0.25)" }}>
+            <h3 className="mb-2 font-source-serif text-lg text-edu-ink">Bulk upload students</h3>
+            <p className="mb-4 text-sm leading-relaxed text-edu-blue-grey">
+              Upload a CSV to invite an entire classroom at once. Each student gets a one-time sign-in code by email.
+            </p>
+
+            <div className="mb-4 rounded-lg bg-edu-paper-2 px-3.5 py-3 text-[12.5px] leading-relaxed text-edu-blue-grey">
+              Required columns: <b className="text-edu-ink">firstName</b>, <b className="text-edu-ink">email</b>.{" "}
+              <b className="text-edu-ink">lastName</b> is optional.{" "}
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                className="font-semibold text-edu-moss hover:underline"
+              >
+                Download template
+              </button>
+            </div>
+
+            {!bulkResult && (
+              <div className="mb-5">
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={(e) => setBulkFile(e.target.files?.[0] ?? null)}
+                  className="w-full rounded-lg border-[1.5px] border-dashed border-edu-line bg-edu-paper p-2.5 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-edu-moss file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-white"
+                />
+              </div>
+            )}
+
+            {bulkResult && (
+              <div className="mb-5 max-h-40 overflow-y-auto rounded-lg border border-edu-line p-3 text-[12.5px]">
+                <p className="mb-1.5 font-semibold text-edu-ink">
+                  {bulkResult.successCount} invited, {bulkResult.failureCount} failed
+                </p>
+                {bulkResult.errors.length > 0 && (
+                  <ul className="space-y-1 text-edu-red">
+                    {bulkResult.errors.map((e, i) => (
+                      <li key={i}>{e.email}: {e.reason}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-2.5">
+              <button
+                className="flex-1 rounded-lg border-[1.5px] border-edu-line py-2.5 text-sm font-bold text-edu-blue-grey hover:bg-edu-paper-2"
+                onClick={closeBulkModal}
+              >
+                {bulkResult ? "Close" : "Cancel"}
+              </button>
+              {!bulkResult && (
+                <button
+                  className="flex-1 rounded-lg bg-edu-moss py-2.5 text-sm font-bold text-white hover:bg-edu-moss-dark disabled:opacity-60"
+                  disabled={!bulkFile || bulkUploadMutation.isPending}
+                  onClick={() => bulkFile && bulkUploadMutation.mutate(bulkFile)}
+                >
+                  {bulkUploadMutation.isPending ? "Uploading…" : "Upload CSV"}
+                </button>
+              )}
             </div>
           </div>
         </div>

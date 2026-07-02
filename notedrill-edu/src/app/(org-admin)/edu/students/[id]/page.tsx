@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 import AvatarInitials from "@/components/edu/AvatarInitials";
 import ScorePill from "@/components/edu/ScorePill";
 import TabBar from "@/components/edu/TabBar";
+import EduBackButton from "@/components/edu/EduBackButton";
 import { orgApi } from "@/lib/org-api";
 import { useAuth } from "@/context/AuthContext";
 import type { OrgStudent, OrgStudentActivity } from "@/types/edu";
@@ -43,12 +43,7 @@ export default function StudentDetailPage() {
       </div>
 
       <div className="px-6 py-6 md:px-8">
-        <Link
-          href="/edu/students"
-          className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-edu-moss hover:underline"
-        >
-          ← Back to all students
-        </Link>
+        <EduBackButton href="/edu/students" label="Back to all students" className="mb-4" />
 
         {/* Student header card */}
         {studentLoading ? (
