@@ -1,13 +1,51 @@
 "use client";
 
 import React, { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { orgApi } from "@/lib/org-api";
+import { useAuth } from "@/context/AuthContext";
+import type { OrgDashboardMetrics } from "@/types/edu";
+
+const STATUS_PILL: Record<
+  OrgDashboardMetrics["subscriptionStatus"],
+  { className: string }
+> = {
+  trialing: { className: "bg-edu-gold-light text-[#8A5A18]" },
+  active: { className: "bg-edu-moss-light text-edu-moss-dark" },
+  past_due: { className: "bg-edu-red-light text-edu-red" },
+  canceled: { className: "bg-edu-paper-2 text-edu-blue-grey" },
+  unpaid: { className: "bg-edu-red-light text-edu-red" },
+};
 
 export default function BillingPage() {
-  const [paystackOpen, setPaystackOpen] = useState(false);
   const [manualPayOpen, setManualPayOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
+  const { orgToken } = useAuth();
+
+  const { data: metrics, isLoading } = useQuery<OrgDashboardMetrics>({
+    queryKey: ["org-dashboard"],
+    queryFn: () => orgApi.getDashboardMetrics(orgToken ?? ""),
+    enabled: !!orgToken,
+    staleTime: 30_000,
+  });
+
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2600); };
+
+  const checkoutMutation = useMutation({
+    mutationFn: () => orgApi.createBillingCheckout(orgToken ?? ""),
+    onSuccess: (data) => {
+      window.location.href = data.checkoutUrl;
+    },
+    onError: (err: Error) => showToast(err.message || "Could not start checkout — please try again"),
+  });
+
+  const needsPayment = !isLoading && metrics ? metrics.billingAmount !== "₦0" : false;
+  const pill = metrics ? STATUS_PILL[metrics.subscriptionStatus] : STATUS_PILL.trialing;
+  const pillLabel =
+    metrics?.subscriptionStatus === "trialing" && metrics.trialDaysLeft != null
+      ? `${metrics.trialDaysLeft} day${metrics.trialDaysLeft === 1 ? "" : "s"} left`
+      : metrics?.billingStatus ?? "";
 
   return (
     <>
@@ -27,35 +65,47 @@ export default function BillingPage() {
               <div className="mb-4 flex items-start justify-between">
                 <div>
                   <p className="text-[12px] font-bold uppercase tracking-wider text-edu-blue-grey">Current plan</p>
-                  <p className="mt-1 font-source-serif text-[22px] text-edu-moss-dark">Trial — 128 students</p>
+                  <p className="mt-1 font-source-serif text-[22px] text-edu-moss-dark">
+                    {isLoading ? "Loading…" : `${metrics?.billingStatus} — ${metrics?.studentCount} student${metrics?.studentCount === 1 ? "" : "s"}`}
+                  </p>
                 </div>
-                <div className="rounded-full bg-edu-gold-light px-3 py-1.5 text-xs font-bold text-[#8A5A18]">12 days left</div>
+                {!isLoading && pillLabel && (
+                  <div className={`rounded-full px-3 py-1.5 text-xs font-bold ${pill.className}`}>{pillLabel}</div>
+                )}
               </div>
               <p className="mb-5 text-[13.5px] leading-relaxed text-edu-blue-grey">
-                Your school has full access during the trial. Once you&apos;re ready, complete payment below and our team will activate your annual plan — usually within one business day.
+                {needsPayment
+                  ? "Complete payment below to activate your plan — you'll be redirected to a secure checkout and your plan updates automatically once payment is confirmed."
+                  : "Your school is on the free tier. Invite more students to see upgrade pricing here."}
               </p>
 
-              {/* Invoice row */}
-              <div className="flex items-center justify-between border-b border-edu-line py-3.5">
-                <div>
-                  <p className="text-sm font-bold text-edu-ink">Annual school plan</p>
-                  <p className="text-xs text-edu-blue-grey">Up to 150 students · billed yearly</p>
+              {needsPayment && (
+                <div className="flex items-center justify-between border-b border-edu-line py-3.5">
+                  <div>
+                    <p className="text-sm font-bold text-edu-ink">Annual school plan</p>
+                    <p className="text-xs text-edu-blue-grey">Up to {metrics?.seatLimit} students · billed yearly</p>
+                  </div>
+                  <span className="font-source-serif text-base text-edu-ink">{metrics?.billingAmount}</span>
                 </div>
-                <span className="font-source-serif text-base text-edu-ink">₦64,000</span>
-              </div>
+              )}
 
-              <button
-                className="mt-5 w-full rounded-lg bg-edu-moss py-2.5 text-sm font-bold text-white hover:bg-edu-moss-dark"
-                onClick={() => setPaystackOpen(true)}
-              >
-                Pay with Paystack
-              </button>
-              <button
-                className="mt-2.5 w-full rounded-lg border-[1.5px] border-edu-line bg-transparent py-2.5 text-sm font-bold text-edu-blue-grey hover:bg-edu-paper-2"
-                onClick={() => setManualPayOpen(true)}
-              >
-                I&apos;ll pay by bank transfer instead
-              </button>
+              {needsPayment && (
+                <>
+                  <button
+                    className="mt-5 w-full rounded-lg bg-edu-moss py-2.5 text-sm font-bold text-white hover:bg-edu-moss-dark disabled:opacity-60"
+                    disabled={checkoutMutation.isPending}
+                    onClick={() => checkoutMutation.mutate()}
+                  >
+                    {checkoutMutation.isPending ? "Redirecting…" : "Upgrade Subscription"}
+                  </button>
+                  <button
+                    className="mt-2.5 w-full rounded-lg border-[1.5px] border-edu-line bg-transparent py-2.5 text-sm font-bold text-edu-blue-grey hover:bg-edu-paper-2"
+                    onClick={() => setManualPayOpen(true)}
+                  >
+                    I&apos;ll pay by bank transfer instead
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Payment history */}
@@ -76,36 +126,26 @@ export default function BillingPage() {
             <div className="rounded-xl border border-edu-line bg-white p-5 md:p-6" style={{ boxShadow: "var(--edu-shadow)" }}>
               <h3 className="mb-3.5 font-source-serif text-[14.5px] text-edu-moss-dark">How billing works</h3>
               <p className="mb-3.5 text-[13px] leading-relaxed text-edu-blue-grey">
-                For now, payments are confirmed manually by our team — whether you pay via Paystack or bank transfer. Your plan is activated as soon as we verify it, usually within one business day.
+                Clicking &quot;Upgrade Subscription&quot; takes you to a secure checkout — Paystack or Polar,
+                depending on your school&apos;s country — and your plan activates automatically once payment
+                is confirmed.
               </p>
               <p className="text-[13px] leading-relaxed text-edu-blue-grey">
-                Automatic renewal through Paystack is coming soon as we onboard more schools — you&apos;ll be notified before anything changes.
+                Prefer to pay by bank transfer? Use the option below and our team will confirm it manually,
+                usually within one business day.
               </p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Paystack Modal */}
-      {paystackOpen && (
-        <Modal title="Pay with Paystack" description="You'll be redirected to Paystack to complete payment securely. Once paid, our team confirms and activates your plan — usually within one business day." onClose={() => setPaystackOpen(false)}>
-          <div className="mb-5 flex items-center gap-3 rounded-xl border-[1.5px] border-edu-moss bg-edu-moss-light p-4">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#1B3A6B] text-[11px] font-extrabold text-white">PS</div>
-            <div>
-              <p className="text-sm font-bold text-edu-ink">Card, bank transfer, or USSD</p>
-              <p className="text-xs text-edu-blue-grey">via Paystack checkout</p>
-            </div>
-          </div>
-          <div className="flex gap-2.5">
-            <button className="flex-1 rounded-lg border-[1.5px] border-edu-line py-2.5 text-sm font-bold text-edu-blue-grey hover:bg-edu-paper-2" onClick={() => setPaystackOpen(false)}>Cancel</button>
-            <button className="flex-1 rounded-lg bg-edu-moss py-2.5 text-sm font-bold text-white hover:bg-edu-moss-dark" onClick={() => { setPaystackOpen(false); showToast("Redirecting to Paystack…"); }}>Continue to Paystack — ₦64,000</button>
-          </div>
-        </Modal>
-      )}
-
       {/* Manual Pay Modal */}
       {manualPayOpen && (
-        <Modal title="Pay by bank transfer" description="Transfer ₦64,000 to the account below, then send your payment reference to our team for confirmation." onClose={() => setManualPayOpen(false)}>
+        <Modal
+          title="Pay by bank transfer"
+          description={`Transfer ${metrics?.billingAmount ?? ""} to the account below, then send your payment reference to our team for confirmation.`}
+          onClose={() => setManualPayOpen(false)}
+        >
           <div className="mb-5 rounded-lg bg-edu-paper-2 p-4 text-[13.5px] leading-relaxed text-edu-ink">
             <b>Account name:</b> Pixelgum Studio Ltd<br />
             <b>Account number:</b> 0123456789<br />

@@ -178,6 +178,13 @@ export const orgApi = {
   getDashboardMetrics: (token: string): Promise<OrgDashboardMetrics> =>
     orgFetch<OrgDashboardMetrics>('/dashboard', { token }),
 
+  /**
+   * Start a subscription checkout — routed server-side to Paystack or Polar
+   * based on the org's registered country. POST /org/billing/checkout
+   */
+  createBillingCheckout: (token: string): Promise<{ checkoutUrl: string }> =>
+    orgFetch<{ checkoutUrl: string }>('/billing/checkout', { method: 'POST', token }),
+
   /** All students for this org. GET /org/students?filter= */
   getOrgStudents: (token: string, filter?: string): Promise<OrgStudent[]> =>
     orgFetch<OrgStudent[]>(`/students${filter ? `?filter=${filter}` : ''}`, { token }),

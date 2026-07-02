@@ -18,7 +18,7 @@ import FlashcardSet from '../models/FlashcardSet';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function requireOrgId(req: AuthRequest, res: Response): string | null {
+export function requireOrgId(req: AuthRequest, res: Response): string | null {
   const orgId = req.user?.orgId;
   if (!orgId) {
     res.status(403).json(errorResponse(
@@ -32,6 +32,20 @@ function requireOrgId(req: AuthRequest, res: Response): string | null {
 
 function formatDate(d: Date): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+const SUBSCRIPTION_STATUS_LABELS: Record<string, string> = {
+  trialing: 'Trial active',
+  active: 'Paid',
+  past_due: 'Payment overdue',
+  canceled: 'Canceled',
+  unpaid: 'Unpaid',
+};
+
+function daysRemaining(target: Date | null | undefined): number | null {
+  if (!target) return null;
+  const msPerDay = 24 * 60 * 60 * 1000;
+  return Math.max(0, Math.ceil((target.getTime() - Date.now()) / msPerDay));
 }
 
 type StudentStatus = 'active' | 'inactive' | 'never';
@@ -98,7 +112,8 @@ export const getOrgDashboard = async (req: AuthRequest, res: Response): Promise<
 
     const avgScore = Math.round((scoreAgg[0]?.avg ?? 0) * 10) / 10;
     const billingAmount = org.amountDue ? `₦${org.amountDue.toLocaleString()}` : '₦0';
-    const billingStatus = org.plan === 'free' ? 'Trial active' : 'Paid';
+    const billingStatus = SUBSCRIPTION_STATUS_LABELS[org.subscriptionStatus] ?? 'Trial active';
+    const trialDaysLeft = daysRemaining(org.trialEndsAt);
 
     res.json(
       successResponse({
@@ -110,6 +125,8 @@ export const getOrgDashboard = async (req: AuthRequest, res: Response): Promise<
         avgScore,
         billingAmount,
         billingStatus,
+        subscriptionStatus: org.subscriptionStatus,
+        trialDaysLeft,
         totalNotes,
       })
     );
