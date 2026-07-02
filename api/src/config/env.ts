@@ -14,6 +14,11 @@ export const validateEnv = () => {
     'MINIO_SECRET_KEY',
     'SUPABASE_JWT_SECRET',
     'ADMIN_API_KEY',
+    'FRONTEND_URL',
+    'PAYSTACK_SECRET_KEY',
+    'POLAR_ACCESS_TOKEN',
+    'POLAR_PRODUCT_ID',
+    'POLAR_WEBHOOK_SECRET',
   ];
 
   const missing: string[] = [];

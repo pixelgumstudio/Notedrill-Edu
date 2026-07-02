@@ -17,6 +17,8 @@ import uploadRoutes from './routes/upload.routes';
 import flashcardRoutes from './routes/flashcard.routes';
 import quizRoutes from './routes/quiz.routes';
 import orgRoutes from './routes/org.routes';
+import billingRoutes from './routes/billing.routes';
+import webhookRoutes from './routes/webhook.routes';
 import vectorDbService from './services/vectorDb.service';
 import {
   requestLogger,
@@ -39,6 +41,11 @@ app.use(cors({
   ],
   credentials: true,
 }));
+// CRITICAL: mounted before express.json() so the raw body bytes reach the
+// gateway signature verification untouched — once express.json() parses a
+// request, the original bytes needed for HMAC verification are gone.
+app.use('/api/v1/webhooks', express.raw({ type: 'application/json' }), webhookRoutes);
+
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
@@ -100,6 +107,7 @@ app.use('/api/v1/upload', uploadRoutes);
 app.use('/api/v1/flashcards', flashcardRoutes);
 app.use('/api/v1/quizzes', quizRoutes);
 app.use('/api/v1/org', orgRoutes);
+app.use('/api/v1/org/billing', billingRoutes);
 
 app.use(notFoundHandler);
 app.use(multerErrorHandler);

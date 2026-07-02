@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import FlashcardFlip from "@/components/edu/FlashcardFlip";
+import EduBackButton from "@/components/edu/EduBackButton";
 import { studentApi } from "@/lib/student-api";
 import { useAuth } from "@/context/AuthContext";
 import type { FlashCard } from "@/types/edu";
@@ -73,9 +74,7 @@ export default function FlashcardsPage() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-edu-paper p-8 text-center">
         <p className="text-edu-blue-grey">Could not load flashcards. This set may be unavailable.</p>
-        <Link href={`/learn/files/${noteId}`} className="rounded-lg bg-edu-moss px-5 py-2.5 text-sm font-bold text-white hover:bg-edu-moss-dark">
-          Back to file
-        </Link>
+        <EduBackButton href={`/learn/files/${noteId}`} label="Back to file" />
       </div>
     );
   }
@@ -88,9 +87,7 @@ export default function FlashcardsPage() {
             <h1 className="font-source-serif text-[18px] text-edu-moss-dark">Flashcards complete</h1>
             <p className="mt-0.5 text-sm text-edu-blue-grey">{total} cards reviewed</p>
           </div>
-          <Link href={`/learn/files/${noteId}`} className="rounded-lg border-[1.5px] border-edu-line bg-transparent px-3 py-1.5 text-sm font-bold text-edu-blue-grey hover:bg-edu-paper-2">
-            Exit
-          </Link>
+          <EduBackButton href={`/learn/files/${noteId}`} label="Exit" />
         </div>
         <div className="mx-auto flex max-w-[460px] flex-col items-center px-5 py-20 text-center">
           <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-edu-moss-light text-3xl">🎉</div>
@@ -125,12 +122,7 @@ export default function FlashcardsPage() {
           <h1 className="font-source-serif text-[18px] text-edu-moss-dark">{flashcardSet.title}</h1>
           <p className="mt-0.5 text-sm text-edu-blue-grey">Flashcard study</p>
         </div>
-        <Link
-          href={`/learn/files/${noteId}`}
-          className="rounded-lg border-[1.5px] border-edu-line bg-transparent px-3 py-1.5 text-sm font-bold text-edu-blue-grey hover:bg-edu-paper-2"
-        >
-          Exit
-        </Link>
+        <EduBackButton href={`/learn/files/${noteId}`} label="Exit" />
       </div>
 
       <div className="mx-auto flex max-w-[560px] flex-col items-center px-5 py-9 md:px-8">

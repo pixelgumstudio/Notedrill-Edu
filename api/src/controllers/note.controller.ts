@@ -465,7 +465,10 @@ export const generateNote = async (req: AuthRequest, res: Response) => {
       if (sourceType === 'pdf' && file.mimetype !== 'application/pdf') {
         return res.status(400).json({ message: 'Unsupported file type for sourceType: pdf' });
       }
-      if (sourceType !== 'audio' && sourceType !== 'pdf') {
+      if (sourceType === 'image' && !file.mimetype.startsWith('image/')) {
+        return res.status(400).json({ message: 'Unsupported file type for sourceType: image' });
+      }
+      if (sourceType !== 'audio' && sourceType !== 'pdf' && sourceType !== 'image') {
         return res.status(400).json({ message: 'Unsupported file type for sourceType: ' + sourceType });
       }
     } else if (!content) {
@@ -607,6 +610,49 @@ export const generateNote = async (req: AuthRequest, res: Response) => {
               throw new Error((finalNote as any)?.error || 'Audio transcription and generation failed');
             }
             noteResult = finalNote.toObject();
+
+          } else if (capturedSourceType === 'image') {
+            // ── Image: upload to storage → OCR extract text → AI generation ──
+            const ocrService = (await import('../services/ocr.service')).default;
+            const storageService = (await import('../services/storage.service')).default;
+            const noteGenerationService = (await import('../services/noteGeneration.service')).default;
+
+            const imageBuffer = await fs.promises.readFile(capturedTempFilePath);
+
+            const fileKey = await storageService.uploadFile(
+              imageBuffer,
+              `images/${userId}/${Date.now()}-${capturedFileOriginalname}`,
+              capturedFileMimetype!
+            );
+
+            const ocrResult = await ocrService.extractTextFromImage(fileKey);
+
+            const words = ocrResult.text.trim().split(/\s+/).filter((w) => w.length > 2);
+            if (words.length < 5) {
+              throw Object.assign(
+                new Error('Could not extract enough readable text from this image. Please try a clearer photo.'),
+                { code: 'IMAGE_QUALITY' }
+              );
+            }
+
+            noteContent = ocrResult.text;
+            metadata = { originalFileName: capturedFileOriginalname, fileKey, ocrConfidence: ocrResult.confidence };
+
+            const generatedNote = await noteGenerationService.generateNote(
+              noteContent, capturedSourceType, { goals: userGoals }
+            );
+            noteContent = generatedNote.content;
+            noteSummary = generatedNote.summary || '';
+            const isGenericFilename = !capturedTitle ||
+                                      capturedTitle === 'Untitled Note' ||
+                                      /^IMG_/i.test(capturedTitle) ||
+                                      /\.(pdf|png|jpe?g|txt|docx?)$/i.test(capturedTitle);
+
+            if (isGenericFilename) {
+              noteTitle = generatedNote.title || generateDefaultTitle(capturedSourceType);
+            } else {
+              noteTitle = capturedTitle;
+            }
 
           } else {
             // ── PDF: extract text from disk → upload to storage → AI generation ──
@@ -753,6 +799,8 @@ export const generateNote = async (req: AuthRequest, res: Response) => {
         let userMessage = 'Note generation failed. Please check your file and try again.';
         if (error.code === 'PDF_QUALITY') {
           userMessage = 'We couldn\'t extract enough readable text from this PDF. Try a text-based PDF with clear content, or copy-paste the text instead.';
+        } else if (error.code === 'IMAGE_QUALITY') {
+          userMessage = 'We couldn\'t extract enough readable text from this image. Try a clearer, well-lit photo of the text.';
         } else if (error.message?.includes('AI_REFUSAL')) {
           userMessage = 'The extracted content wasn\'t suitable for note generation. Please try a different document.';
         }

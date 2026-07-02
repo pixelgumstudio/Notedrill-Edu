@@ -10,6 +10,9 @@ export interface IOTP extends Document {
   createdAt: Date;
   /** Set for org_invite OTPs so the student endpoint can create the User in the right org. */
   orgId?: string;
+  /** Optional name captured at invite time (e.g. from a bulk CSV upload). */
+  firstName?: string;
+  lastName?: string;
 }
 
 const otpSchema = new Schema<IOTP>(
@@ -43,6 +46,12 @@ const otpSchema = new Schema<IOTP>(
       default: 0,
     },
     orgId: {
+      type: String,
+    },
+    firstName: {
+      type: String,
+    },
+    lastName: {
       type: String,
     },
   },

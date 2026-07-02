@@ -18,7 +18,8 @@ export interface OrgDashboardMetrics {
   avgScore: number;
   billingAmount: string;
   billingStatus: string;
-  trialDaysLeft?: number;
+  subscriptionStatus: "trialing" | "active" | "past_due" | "canceled" | "unpaid";
+  trialDaysLeft: number | null;
 }
 
 export interface OrgStudentActivity {

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
+import EduBackButton from "@/components/edu/EduBackButton";
 
 interface ReviewItem {
   questionText: string;
@@ -82,9 +83,7 @@ export default function QuizResultsPage() {
             <h1 className="font-source-serif text-[18px] text-edu-moss-dark">Quiz results</h1>
             <p className="mt-0.5 text-sm text-edu-blue-grey">No detailed results available for this attempt</p>
           </div>
-          <Link href={`/learn/files/${noteId}`} className="rounded-lg border-[1.5px] border-edu-line bg-transparent px-3 py-1.5 text-sm font-bold text-edu-blue-grey hover:bg-edu-paper-2">
-            Back to file
-          </Link>
+          <EduBackButton href={`/learn/files/${noteId}`} label="Back to file" />
         </div>
         <div className="mx-auto flex max-w-[700px] flex-col items-center px-5 py-16 text-center">
           <p className="mb-6 text-sm text-edu-blue-grey">Detailed review is only available immediately after completing a quiz. Retake this quiz to see full results.</p>
@@ -108,12 +107,7 @@ export default function QuizResultsPage() {
           <h1 className="font-source-serif text-[18px] text-edu-moss-dark">{fileTitle}</h1>
           <p className="mt-0.5 text-sm text-edu-blue-grey">Quiz results</p>
         </div>
-        <Link
-          href={`/learn/files/${noteId}`}
-          className="rounded-lg border-[1.5px] border-edu-line bg-transparent px-3 py-1.5 text-sm font-bold text-edu-blue-grey hover:bg-edu-paper-2"
-        >
-          Back to file
-        </Link>
+        <EduBackButton href={`/learn/files/${noteId}`} label="Back to file" />
       </div>
 
       <div className="mx-auto max-w-[700px] px-5 py-9 md:px-8">

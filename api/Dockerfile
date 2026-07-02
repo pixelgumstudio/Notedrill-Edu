@@ -5,83 +5,63 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies for native modules
 RUN apk add --no-cache python3 make g++
 
-# 1. Copy root package files and workspace manifests
+# Copy workspace manifests first (better layer caching)
 COPY package*.json ./
-COPY turbo.json ./
-COPY apps/api/package*.json ./apps/api/
+COPY api/package*.json ./api/
+COPY packages/types/package*.json ./packages/types/
 COPY packages/validation/package*.json ./packages/validation/
 COPY packages/shared/package*.json ./packages/shared/
-COPY packages/types/package*.json ./packages/types/
 
-# 2. Install all dependencies (including devDeps for building)
-RUN npm ci --include-workspace-root
+# Install all dependencies from workspace root
+RUN npm ci
 
-# 3. Copy all source code
-COPY . .
+# Copy full source
+COPY packages/ ./packages/
+COPY api/ ./api/
 
-# 4. Build the API and all its local dependencies using Turbo
-# This handles the building of @notedrill/validation, shared, and types automatically
-RUN npx turbo run build --filter=@notedrill/api...
+# Build shared packages (if they have build scripts), then the API
+RUN npm run build --workspaces --if-present || true
+RUN npm run build:api
 
 # ========================================
-# Stage 2: Production
+# Stage 2: Production runner
 # ========================================
 FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-# Set environment
 ENV NODE_ENV=production
 
-# Install runtime dependencies
-# curl: healthchecks | ffmpeg: audio conversion | yt-dlp: youtube audio download
+# Runtime tools: yt-dlp for YouTube transcription, ffmpeg for audio processing
 RUN apk add --no-cache curl python3 py3-pip ffmpeg && \
     pip3 install --upgrade pip --break-system-packages && \
-    pip3 install "yt-dlp[default]" bgutil-ytdlp-pot-provider --break-system-packages && \
-    yt-dlp --version
+    pip3 install "yt-dlp[default]" --break-system-packages
 
-# yt-dlp global config: use Node (already in image) as JS runtime for
-# YouTube n-parameter/signature decryption, and fetch latest challenge
-# solver scripts from GitHub to avoid stale-version failures.
-RUN printf -- '--js-runtimes node\n--remote-components ejs:github\n' \
-    > /etc/yt-dlp.conf
-
-# 1. Copy package manifests for production install
+# Copy workspace manifests for production install
 COPY package*.json ./
-COPY apps/api/package*.json ./apps/api/
+COPY api/package*.json ./api/
+COPY packages/types/package*.json ./packages/types/
 COPY packages/validation/package*.json ./packages/validation/
 COPY packages/shared/package*.json ./packages/shared/
-COPY packages/types/package*.json ./packages/types/
 
-# 2. Install production-only dependencies
-RUN npm ci --omit=dev --workspace=apps/api --include-workspace-root
+# Install production dependencies only
+RUN npm ci --omit=dev
 
-# 3. Copy built files from the builder stage
-# Copy the compiled JS from the API
-COPY --from=builder /app/apps/api/dist ./apps/api/dist
-# Copy the compiled JS from your internal packages
-COPY --from=builder /app/packages/validation/dist ./packages/validation/dist
-COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
-COPY --from=builder /app/packages/types/dist ./packages/types/dist
+# Copy compiled outputs from builder
+COPY --from=builder /app/api/dist ./api/dist
+COPY --from=builder /app/packages ./packages
 
-# 4. Security: Run as non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001 && \
     chown -R nodejs:nodejs /app
 
 USER nodejs
 
-# Expose the API port
-EXPOSE 5000
+EXPOSE 8081
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:5000/health || exit 1
+  CMD curl -f http://localhost:8081/health || exit 1
 
-# Start the application
-# The WORKDIR is important so node finds the correct dist/server.js
-WORKDIR /app/apps/api
-CMD ["node", "dist/server.js"]
+CMD ["node", "api/dist/server.js"]

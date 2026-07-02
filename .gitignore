@@ -14,6 +14,7 @@ packages/*/dist/
 .env*.local
 **/.env
 **/.env.local
+!.env.example
 
 # Logs
 *.log
@@ -25,3 +26,7 @@ Thumbs.db
 
 # Uploads
 uploads/
+
+# Google Cloud credentials
+api/google-credentials.json
+**/google-credentials.json

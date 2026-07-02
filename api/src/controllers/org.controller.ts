@@ -18,7 +18,7 @@ import FlashcardSet from '../models/FlashcardSet';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function requireOrgId(req: AuthRequest, res: Response): string | null {
+export function requireOrgId(req: AuthRequest, res: Response): string | null {
   const orgId = req.user?.orgId;
   if (!orgId) {
     res.status(403).json(errorResponse(
@@ -32,6 +32,20 @@ function requireOrgId(req: AuthRequest, res: Response): string | null {
 
 function formatDate(d: Date): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+const SUBSCRIPTION_STATUS_LABELS: Record<string, string> = {
+  trialing: 'Trial active',
+  active: 'Paid',
+  past_due: 'Payment overdue',
+  canceled: 'Canceled',
+  unpaid: 'Unpaid',
+};
+
+function daysRemaining(target: Date | null | undefined): number | null {
+  if (!target) return null;
+  const msPerDay = 24 * 60 * 60 * 1000;
+  return Math.max(0, Math.ceil((target.getTime() - Date.now()) / msPerDay));
 }
 
 type StudentStatus = 'active' | 'inactive' | 'never';
@@ -98,7 +112,8 @@ export const getOrgDashboard = async (req: AuthRequest, res: Response): Promise<
 
     const avgScore = Math.round((scoreAgg[0]?.avg ?? 0) * 10) / 10;
     const billingAmount = org.amountDue ? `₦${org.amountDue.toLocaleString()}` : '₦0';
-    const billingStatus = org.plan === 'free' ? 'Trial active' : 'Paid';
+    const billingStatus = SUBSCRIPTION_STATUS_LABELS[org.subscriptionStatus] ?? 'Trial active';
+    const trialDaysLeft = daysRemaining(org.trialEndsAt);
 
     res.json(
       successResponse({
@@ -110,6 +125,8 @@ export const getOrgDashboard = async (req: AuthRequest, res: Response): Promise<
         avgScore,
         billingAmount,
         billingStatus,
+        subscriptionStatus: org.subscriptionStatus,
+        trialDaysLeft,
         totalNotes,
       })
     );
@@ -307,17 +324,93 @@ export const addStudent = async (req: AuthRequest, res: Response): Promise<void>
     const orgId = requireOrgId(req, res);
     if (!orgId) return;
 
-    const { email } = req.body;
+    const { email, firstName, lastName } = req.body;
 
     if (!email || typeof email !== 'string') {
       res.status(400).json(errorResponse('A valid email address is required.', ERROR_CODES.VALIDATION_ERROR));
       return;
     }
 
-    const result = await inviteStudentToOrg(orgId, email);
+    const result = await inviteStudentToOrg(orgId, email, firstName, lastName);
     res.json(
       successResponse(result, `Invite sent to ${result.email}. OTP expires in ${result.expiresIn / 60} minutes.`)
     );
+  } catch (err: any) {
+    const status = err.status ?? 500;
+    res.status(status).json(errorResponse(err.message, ERROR_CODES.SERVER_ERROR));
+  }
+};
+
+// ── Bulk student invite (CSV) ───────────────────────────────────────────────────
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_BULK_ROWS = 500;
+
+export const addStudentsBulk = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const orgId = requireOrgId(req, res);
+    if (!orgId) return;
+
+    if (!req.file) {
+      res.status(400).json(errorResponse('A CSV file is required.', ERROR_CODES.VALIDATION_ERROR));
+      return;
+    }
+
+    let records: Record<string, string>[];
+    try {
+      const { parse } = await import('csv-parse/sync');
+      records = parse(req.file.buffer, {
+        columns: (header: string[]) => header.map((h) => h.trim().toLowerCase()),
+        skip_empty_lines: true,
+        trim: true,
+      });
+    } catch (parseErr: any) {
+      res.status(400).json(errorResponse(`Could not parse CSV file: ${parseErr.message}`, ERROR_CODES.VALIDATION_ERROR));
+      return;
+    }
+
+    if (records.length === 0) {
+      res.status(400).json(errorResponse('CSV file has no rows.', ERROR_CODES.VALIDATION_ERROR));
+      return;
+    }
+
+    if (records.length > MAX_BULK_ROWS) {
+      res.status(400).json(errorResponse(
+        `CSV has ${records.length} rows — the maximum per upload is ${MAX_BULK_ROWS}. Split it into smaller files.`,
+        ERROR_CODES.VALIDATION_ERROR
+      ));
+      return;
+    }
+
+    let successCount = 0;
+    const errors: { email: string; reason: string }[] = [];
+
+    for (const record of records) {
+      const email = (record.email ?? '').trim();
+      const firstName = (record.firstname ?? '').trim();
+      const lastName = (record.lastname ?? '').trim();
+
+      if (!email || !EMAIL_REGEX.test(email)) {
+        errors.push({ email: email || '(blank)', reason: 'Missing or invalid email address' });
+        continue;
+      }
+      if (!firstName) {
+        errors.push({ email, reason: 'Missing first name' });
+        continue;
+      }
+
+      try {
+        await inviteStudentToOrg(orgId, email, firstName, lastName || undefined);
+        successCount += 1;
+      } catch (err: any) {
+        errors.push({ email, reason: err.message || 'Failed to send invite' });
+      }
+    }
+
+    res.json(successResponse(
+      { successCount, failureCount: errors.length, errors },
+      `Invited ${successCount} of ${records.length} students.`
+    ));
   } catch (err: any) {
     const status = err.status ?? 500;
     res.status(status).json(errorResponse(err.message, ERROR_CODES.SERVER_ERROR));
