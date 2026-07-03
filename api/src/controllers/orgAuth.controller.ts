@@ -153,6 +153,8 @@ export const verifyStudentLoginOTP = async (req: Request, res: Response): Promis
       user = new User({
         email: normalizedEmail,
         name: invitedName || username,
+        firstName: otpRecord.firstName || undefined,
+        lastName: otpRecord.lastName || undefined,
         username,
         orgId: new Types.ObjectId(otpRecord.orgId),
         role: 'student',

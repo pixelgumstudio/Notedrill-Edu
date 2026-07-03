@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
@@ -20,6 +20,21 @@ import Toast from "@/components/edu/Toast";
 type Step = "request" | "verify";
 
 export default function OrgLoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <OrgLoginPageInner />
+    </Suspense>
+  );
+}
+
+function OrgLoginPageInner() {
+  const searchParams = useSearchParams();
+  // Populated when redirected here right after registration (see org/register/page.tsx).
+  // orgId is what actually authenticates — schoolId is just shown as a friendly reference,
+  // since OTP login still looks orgs up by their real orgId, not the human-readable schoolId.
+  const initialOrgId = searchParams.get("orgId") ?? "";
+  const initialSchoolId = searchParams.get("schoolId") ?? "";
+
   const [step, setStep] = useState<Step>("request");
   const [prefillEmail, setPrefillEmail] = useState("");
   const [prefillOrgId, setPrefillOrgId] = useState("");
@@ -66,8 +81,15 @@ export default function OrgLoginPage() {
           </div>
         )}
 
+        {step === "request" && initialSchoolId && (
+          <div className="mb-4 rounded-lg bg-edu-moss-light px-3.5 py-2.5 text-center text-[13px] font-semibold text-edu-moss-dark">
+            Signing in for School ID: {initialSchoolId}
+          </div>
+        )}
+
         {step === "request" ? (
           <RequestStep
+            initialOrgId={initialOrgId}
             onSuccess={(email, orgId) => {
               setPrefillEmail(email);
               setPrefillOrgId(orgId);
@@ -102,9 +124,11 @@ export default function OrgLoginPage() {
 }
 
 function RequestStep({
+  initialOrgId,
   onSuccess,
   onError,
 }: {
+  initialOrgId?: string;
   onSuccess: (email: string, orgId: string) => void;
   onError: (msg: string) => void;
 }) {
@@ -112,7 +136,10 @@ function RequestStep({
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<OrgOtpRequestInput>({ resolver: zodResolver(orgOtpRequestSchema) });
+  } = useForm<OrgOtpRequestInput>({
+    resolver: zodResolver(orgOtpRequestSchema),
+    defaultValues: { orgId: initialOrgId ?? "" },
+  });
 
   const mutation = useMutation({
     mutationFn: orgApi.requestOtp,

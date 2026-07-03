@@ -95,6 +95,32 @@ export const sendOTPEmail = async (
   }
 };
 
+/**
+ * Sends a "Welcome to NoteDrill" email to a newly-invited student, letting
+ * them know an account exists and how to log in (email + OTP, no password).
+ * Mocked via console.log for now — swap for a real template/transporter
+ * call once the product team wants this actually delivered.
+ */
+export const sendWelcomeEmail = (params: {
+  email: string;
+  firstName?: string;
+  schoolId: string;
+  loginUrl: string;
+}): void => {
+  const { email, firstName, schoolId, loginUrl } = params;
+  const greeting = firstName ? firstName : 'there';
+
+  console.log(
+    `📧 [MOCK EMAIL] Welcome to NoteDrill\n` +
+    `To: ${email}\n` +
+    `Subject: Welcome to NoteDrill, ${greeting}!\n\n` +
+    `Hi ${greeting},\n\n` +
+    `Your school (School ID: ${schoolId}) has added you to NoteDrill. You don't need a password — ` +
+    `just enter your email address (${email}) and we'll send you a one-time sign-in code.\n\n` +
+    `Log in here: ${loginUrl}\n`
+  );
+};
+
 // Verify SMTP connection
 export const verifyEmailConnection = async (): Promise<boolean> => {
   try {

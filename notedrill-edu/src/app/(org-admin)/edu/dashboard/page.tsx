@@ -12,6 +12,7 @@ import type { OrgStudent, OrgDashboardMetrics } from "@/types/edu";
 export default function DashboardPage() {
   const [addStudentOpen, setAddStudentOpen] = useState(false);
   const [addEmail, setAddEmail] = useState("");
+  const [addFirstName, setAddFirstName] = useState("");
   const [toast, setToast] = useState<string | null>(null);
 
   const { orgToken } = useAuth();
@@ -32,10 +33,11 @@ export default function DashboardPage() {
   });
 
   const addStudentMutation = useMutation({
-    mutationFn: (email: string) => orgApi.addOrgStudent(orgToken ?? "", { email }),
+    mutationFn: (data: { email: string; firstName: string }) => orgApi.addOrgStudent(orgToken ?? "", data),
     onSuccess: () => {
       setAddStudentOpen(false);
       setAddEmail("");
+      setAddFirstName("");
       showToast("Student invited — login code sent to their email");
       queryClient.invalidateQueries({ queryKey: ["org-students"] });
       queryClient.invalidateQueries({ queryKey: ["org-metrics"] });
@@ -48,6 +50,11 @@ export default function DashboardPage() {
     setTimeout(() => setToast(null), 2600);
   };
 
+  const copySchoolId = () => {
+    if (!metrics?.schoolId) return;
+    navigator.clipboard.writeText(metrics.schoolId).then(() => showToast("School ID copied"));
+  };
+
   const m = metrics;
   const s = students ?? [];
 
@@ -58,6 +65,15 @@ export default function DashboardPage() {
         <div>
           <h1 className="font-source-serif text-[22px] text-edu-moss-dark">Dashboard</h1>
           <p className="mt-0.5 text-sm text-edu-blue-grey">Overview of your school&apos;s NoteDrill activity</p>
+          {m?.schoolId && (
+            <button
+              onClick={copySchoolId}
+              title="Click to copy"
+              className="mt-2 inline-flex items-center gap-1.5 rounded-full border-[1.5px] border-edu-line bg-edu-paper-2 px-3 py-1 text-[12px] font-bold text-edu-moss-dark transition-colors hover:border-edu-moss"
+            >
+              School ID: {m.schoolId} <span aria-hidden="true">⧉</span>
+            </button>
+          )}
         </div>
         <div className="flex shrink-0 gap-2.5">
           <Link
@@ -138,6 +154,16 @@ export default function DashboardPage() {
             <p className="mb-5 text-sm leading-relaxed text-edu-blue-grey">
               They&apos;ll log in using a one-time code sent to this email — no password needed.
             </p>
+            <div className="mb-4">
+              <label className="mb-1.5 block text-[12.5px] font-semibold text-edu-ink">First name</label>
+              <input
+                type="text"
+                value={addFirstName}
+                onChange={(e) => setAddFirstName(e.target.value)}
+                className="w-full rounded-lg border-[1.5px] border-edu-line bg-edu-paper p-2.5 text-sm focus:border-edu-moss focus:outline-none"
+                placeholder="Jane"
+              />
+            </div>
             <div className="mb-5">
               <label className="mb-1.5 block text-[12.5px] font-semibold text-edu-ink">Email address</label>
               <input
@@ -151,14 +177,14 @@ export default function DashboardPage() {
             <div className="flex gap-2.5">
               <button
                 className="flex-1 rounded-lg border-[1.5px] border-edu-line py-2.5 text-sm font-bold text-edu-blue-grey hover:bg-edu-paper-2"
-                onClick={() => { setAddStudentOpen(false); setAddEmail(""); }}
+                onClick={() => { setAddStudentOpen(false); setAddEmail(""); setAddFirstName(""); }}
               >
                 Cancel
               </button>
               <button
                 className="flex-1 rounded-lg bg-edu-moss py-2.5 text-sm font-bold text-white hover:bg-edu-moss-dark disabled:opacity-60"
-                disabled={!addEmail || addStudentMutation.isPending}
-                onClick={() => addStudentMutation.mutate(addEmail)}
+                disabled={!addEmail || !addFirstName || addStudentMutation.isPending}
+                onClick={() => addStudentMutation.mutate({ email: addEmail, firstName: addFirstName })}
               >
                 {addStudentMutation.isPending ? "Sending…" : "Add student"}
               </button>

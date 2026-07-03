@@ -10,6 +10,7 @@ export interface OrgStudent {
 }
 
 export interface OrgDashboardMetrics {
+  schoolId: string;
   studentCount: number;
   seatLimit: number;
   activeStudents: number;

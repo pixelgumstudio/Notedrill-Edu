@@ -41,11 +41,13 @@ export default function OrgRegisterPage() {
   const mutation = useMutation({
     mutationFn: orgApi.register,
     onSuccess: (data) => {
-      // Show the org ID briefly, then redirect to login so admin can sign in
-      setSuccessMsg(`Registration successful! Your Organisation ID is: ${data.orgId} — redirecting to sign in…`);
+      // Show the School ID briefly, then redirect to login so admin can sign in
+      setSuccessMsg(`Registration successful! Your School ID is: ${data.schoolId} — save this for signing in. Redirecting…`);
       setErrorMsg(null);
       setTimeout(() => {
-        router.push(`/org/login?orgId=${encodeURIComponent(data.orgId)}`);
+        router.push(
+          `/org/login?orgId=${encodeURIComponent(data.orgId)}&schoolId=${encodeURIComponent(data.schoolId)}`
+        );
       }, 2500);
     },
     onError: (err: Error) => {

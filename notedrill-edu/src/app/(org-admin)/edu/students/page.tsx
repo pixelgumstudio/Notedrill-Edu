@@ -19,6 +19,7 @@ export default function StudentsPage() {
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
   const [addStudentOpen, setAddStudentOpen] = useState(false);
   const [addEmail, setAddEmail] = useState("");
+  const [addFirstName, setAddFirstName] = useState("");
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [bulkResult, setBulkResult] = useState<BulkStudentUploadResult | null>(null);
@@ -36,10 +37,11 @@ export default function StudentsPage() {
   });
 
   const addStudentMutation = useMutation({
-    mutationFn: (email: string) => orgApi.addOrgStudent(orgToken ?? "", { email }),
+    mutationFn: (data: { email: string; firstName: string }) => orgApi.addOrgStudent(orgToken ?? "", data),
     onSuccess: () => {
       setAddStudentOpen(false);
       setAddEmail("");
+      setAddFirstName("");
       showToast("Student invited — login code sent to their email");
       queryClient.invalidateQueries({ queryKey: ["org-students"] });
     },
@@ -173,6 +175,16 @@ export default function StudentsPage() {
             <p className="mb-5 text-sm leading-relaxed text-edu-blue-grey">
               They&apos;ll log in using a one-time code sent to this email — no password needed.
             </p>
+            <div className="mb-4">
+              <label className="mb-1.5 block text-[12.5px] font-semibold text-edu-ink">First name</label>
+              <input
+                type="text"
+                value={addFirstName}
+                onChange={(e) => setAddFirstName(e.target.value)}
+                className="w-full rounded-lg border-[1.5px] border-edu-line bg-edu-paper p-2.5 text-sm focus:border-edu-moss focus:outline-none"
+                placeholder="Jane"
+              />
+            </div>
             <div className="mb-5">
               <label className="mb-1.5 block text-[12.5px] font-semibold text-edu-ink">Email address</label>
               <input
@@ -186,14 +198,14 @@ export default function StudentsPage() {
             <div className="flex gap-2.5">
               <button
                 className="flex-1 rounded-lg border-[1.5px] border-edu-line py-2.5 text-sm font-bold text-edu-blue-grey hover:bg-edu-paper-2"
-                onClick={() => { setAddStudentOpen(false); setAddEmail(""); }}
+                onClick={() => { setAddStudentOpen(false); setAddEmail(""); setAddFirstName(""); }}
               >
                 Cancel
               </button>
               <button
                 className="flex-1 rounded-lg bg-edu-moss py-2.5 text-sm font-bold text-white hover:bg-edu-moss-dark disabled:opacity-60"
-                disabled={!addEmail || addStudentMutation.isPending}
-                onClick={() => addStudentMutation.mutate(addEmail)}
+                disabled={!addEmail || !addFirstName || addStudentMutation.isPending}
+                onClick={() => addStudentMutation.mutate({ email: addEmail, firstName: addFirstName })}
               >
                 {addStudentMutation.isPending ? "Sending…" : "Add student"}
               </button>

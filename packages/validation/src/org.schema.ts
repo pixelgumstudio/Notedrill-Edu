@@ -22,6 +22,13 @@ export const orgOtpVerifySchema = z.object({
   otp: z.string().length(6, 'OTP must be exactly 6 digits').regex(/^\d{6}$/, 'OTP must contain only digits'),
 });
 
+export const addStudentSchema = z.object({
+  email: z.string().email('Invalid email format'),
+  firstName: z.string().min(1, 'First name is required'),
+  lastName: z.string().optional(),
+});
+
 export type OrgRegisterInput = z.infer<typeof orgRegisterSchema>;
 export type OrgOtpRequestInput = z.infer<typeof orgOtpRequestSchema>;
 export type OrgOtpVerifyInput = z.infer<typeof orgOtpVerifySchema>;
+export type AddStudentInput = z.infer<typeof addStudentSchema>;

@@ -2,7 +2,7 @@ import { Org, IOrg } from '../models/Org';
 import { User } from '../models/User';
 import { OTP } from '../models/OTP';
 import { Types } from 'mongoose';
-import { generateOTP, sendOTPEmail } from './email.service';
+import { generateOTP, sendOTPEmail, sendWelcomeEmail } from './email.service';
 
 interface CreateOrgInput {
   name: string;
@@ -15,6 +15,28 @@ interface CreateOrgInput {
   domain?: string;
 }
 
+/** Uppercased alnum-only prefix from the org's first name word, e.g. "Greenwood High" -> "GREENWOOD". */
+function schoolIdPrefix(name: string): string {
+  const firstWord = name.trim().split(/\s+/)[0] || '';
+  const cleaned = firstWord.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  return cleaned.slice(0, 12) || 'SCHOOL';
+}
+
+/** Generates a human-readable, unique school ID like "GREENWOOD-8392". */
+async function generateUniqueSchoolId(name: string): Promise<string> {
+  const prefix = schoolIdPrefix(name);
+  const MAX_ATTEMPTS = 5;
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const suffix = Math.floor(1000 + Math.random() * 9000);
+    const candidate = `${prefix}-${suffix}`;
+    const existing = await Org.findOne({ schoolId: candidate });
+    if (!existing) return candidate;
+  }
+
+  throw Object.assign(new Error('Could not generate a unique school ID. Please try again.'), { status: 500 });
+}
+
 export async function createOrg(input: CreateOrgInput): Promise<IOrg> {
   if (input.domain) {
     const existing = await Org.findOne({ domain: input.domain.toLowerCase() });
@@ -25,9 +47,11 @@ export async function createOrg(input: CreateOrgInput): Promise<IOrg> {
 
   const seatLimit = input.estimatedStudents;
   const amountDue = calculateAmountDue(seatLimit);
+  const schoolId = await generateUniqueSchoolId(input.name);
 
   const org = new Org({
     ...input,
+    schoolId,
     plan: 'free',
     seatLimit,
     amountDue,
@@ -101,6 +125,14 @@ export async function inviteStudentToOrg(
 
   const sent = await sendOTPEmail(email, otp, 'signup');
   if (!sent) throw Object.assign(new Error('Failed to send invite email. Please try again.'), { status: 502 });
+
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
+  sendWelcomeEmail({
+    email,
+    firstName,
+    schoolId: org.schoolId,
+    loginUrl: `${frontendUrl}/student/login`,
+  });
 
   return { email, expiresIn: OTP_EXPIRY_MINUTES * 60 };
 }

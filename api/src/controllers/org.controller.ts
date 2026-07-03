@@ -10,7 +10,7 @@ import {
   removeStudentFromOrg,
   inviteStudentToOrg,
 } from '../services/org.service';
-import { orgRegisterSchema } from '@notedrill/validation';
+import { orgRegisterSchema, addStudentSchema } from '@notedrill/validation';
 import { User } from '../models/User';
 import Note from '../models/Note';
 import Quiz from '../models/Quiz';
@@ -66,7 +66,10 @@ export const registerOrg = async (req: AuthRequest, res: Response): Promise<void
     }
 
     const org = await createOrg(parsed.data);
-    res.status(201).json(successResponse({ orgId: org._id.toString() }, 'Organisation registered successfully.'));
+    res.status(201).json(successResponse(
+      { orgId: org._id.toString(), schoolId: org.schoolId },
+      'Organisation registered successfully.'
+    ));
   } catch (err: any) {
     const status = err.status ?? 500;
     res.status(status).json(errorResponse(err.message, ERROR_CODES.SERVER_ERROR));
@@ -117,6 +120,7 @@ export const getOrgDashboard = async (req: AuthRequest, res: Response): Promise<
 
     res.json(
       successResponse({
+        schoolId: org.schoolId,
         studentCount: seatUsage.used,
         seatLimit: seatUsage.limit,
         activeStudents,
@@ -324,12 +328,12 @@ export const addStudent = async (req: AuthRequest, res: Response): Promise<void>
     const orgId = requireOrgId(req, res);
     if (!orgId) return;
 
-    const { email, firstName, lastName } = req.body;
-
-    if (!email || typeof email !== 'string') {
-      res.status(400).json(errorResponse('A valid email address is required.', ERROR_CODES.VALIDATION_ERROR));
+    const parsed = addStudentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json(errorResponse(parsed.error.errors[0].message, ERROR_CODES.VALIDATION_ERROR));
       return;
     }
+    const { email, firstName, lastName } = parsed.data;
 
     const result = await inviteStudentToOrg(orgId, email, firstName, lastName);
     res.json(

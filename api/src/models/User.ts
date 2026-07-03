@@ -36,6 +36,9 @@ export interface IUser extends Document {
   email: string;
   password?: string;
   name: string;
+  /** Structured given/family name, populated for org-invited students; `name` remains the display fallback. */
+  firstName?: string;
+  lastName?: string;
   username: string;
   subscription: 'FREE' | 'PRO';
   orgId?: Types.ObjectId;
@@ -101,6 +104,14 @@ const userSchema = new Schema<IUser>(
       required: [true, 'Name is required'],
       trim: true,
       minlength: [2, 'Name must be at least 2 characters'],
+    },
+    firstName: {
+      type: String,
+      trim: true,
+    },
+    lastName: {
+      type: String,
+      trim: true,
     },
     username: {
       type: String,
