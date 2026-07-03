@@ -19,6 +19,14 @@ RUN npm install
 COPY packages/ ./packages/
 COPY notedrill-edu/ ./notedrill-edu/
 
+# Build the shared packages first — their package.json "main"/"types" point at
+# dist/, which .dockerignore strips from the build context, so dist must be
+# produced here. Scoped to just these three (not `--workspaces`) so this
+# doesn't also trigger notedrill-edu's own "build" script (next build) before
+# NEXT_PUBLIC_API_URL is set below, which would waste a full build and risk
+# baking in a missing API URL.
+RUN npm run build --workspace=@notedrill/types --workspace=@notedrill/shared --workspace=@notedrill/validation
+
 # API URL is baked into the JS bundle at build time
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
