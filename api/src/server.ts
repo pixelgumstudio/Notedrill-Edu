@@ -116,7 +116,11 @@ app.use(errorLogger);
 const connectDB = async () => {
   try {
     if (!process.env.MONGODB_URI) throw new Error('MONGODB_URI environment variable is required');
-    await mongoose.connect(process.env.MONGODB_URI);
+    // Bounded so an unreachable Mongo fails fast and loudly instead of hanging
+    // on whatever the driver's internal default happens to be.
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 10_000,
+    });
     console.log('📦 MongoDB connected successfully');
   } catch (error) {
     console.error('❌ MongoDB connection error:', error);
@@ -124,20 +128,42 @@ const connectDB = async () => {
   }
 };
 
-const startServer = async () => {
-  await connectDB();
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+}
 
-  require('./worker/transcription.worker');
-  console.log('⚙️  Transcription worker started');
-
+/**
+ * Starts the transcription worker and vector DB connection in the background.
+ * Neither is required to serve HTTP traffic — a lecture-transcription job or a
+ * semantic-search call is what actually needs them, not routes like /health —
+ * so a slow or unreachable Redis/Qdrant must never delay app.listen().
+ */
+function startBackgroundServices(): void {
   try {
-    await vectorDbService.waitForInitialization();
+    require('./worker/transcription.worker');
+    console.log('⚙️  Transcription worker started');
   } catch (error) {
-    console.error('⚠️ Vector DB initialization failed, continuing without it:', error);
+    console.error('⚠️ Transcription worker failed to start, continuing without it:', error);
   }
 
+  withTimeout(vectorDbService.waitForInitialization(), 10_000, 'Vector DB initialization')
+    .catch((error) => {
+      console.error('⚠️ Vector DB initialization failed or timed out, continuing without it:', error);
+    });
+}
+
+const startServer = async () => {
+  // Only MongoDB gates server startup — nothing else Caddy/Docker health
+  // checks depend on should be able to hold the HTTP server hostage.
+  await connectDB();
+
   const server = app.listen(parseInt(PORT as string, 10), '0.0.0.0', () => {
-    console.log(`🚀 Notedrill Edu API running on http://localhost:${PORT}`);
+    console.log(`🚀 Notedrill Edu API running on http://0.0.0.0:${PORT}`);
     console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`✅ Health check: http://localhost:${PORT}/health`);
   });
@@ -155,6 +181,8 @@ const startServer = async () => {
     console.error('❌ Uncaught Exception:', error);
     process.exit(1);
   });
+
+  startBackgroundServices();
 };
 
 if (require.main === module) {
