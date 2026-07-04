@@ -2,7 +2,7 @@ import { Org, IOrg } from '../models/Org';
 import { User } from '../models/User';
 import { OTP } from '../models/OTP';
 import { Types } from 'mongoose';
-import { generateOTP, sendOTPEmail, sendWelcomeEmail, sendOrgWelcomeEmail, sendSchoolIdRecoveryEmail } from './email.service';
+import { generateOTP, sendOrgInviteOTPEmail, sendOrgWelcomeEmail, sendSchoolIdRecoveryEmail } from './email.service';
 
 interface CreateOrgInput {
   name: string;
@@ -22,8 +22,12 @@ function schoolIdPrefix(name: string): string {
   return cleaned.slice(0, 12) || 'SCHOOL';
 }
 
-/** Generates a human-readable, unique school ID like "GREENWOOD-8392". */
-async function generateUniqueSchoolId(name: string): Promise<string> {
+/**
+ * Generates a human-readable, unique school ID like "GREENWOOD-8392".
+ * Exported so the one-off backfill migration (scripts/backfill-school-ids.ts)
+ * can reuse the exact same generation/uniqueness logic for pre-existing orgs.
+ */
+export async function generateUniqueSchoolId(name: string): Promise<string> {
   const prefix = schoolIdPrefix(name);
   const MAX_ATTEMPTS = 5;
 
@@ -60,8 +64,9 @@ export async function createOrg(input: CreateOrgInput): Promise<IOrg> {
 
   await org.save();
 
+  // Best-effort — a flaky send here shouldn't undo an org that was already created.
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
-  sendOrgWelcomeEmail({
+  await sendOrgWelcomeEmail({
     adminEmail: org.adminEmail,
     orgName: org.name,
     schoolId: org.schoolId,
@@ -83,7 +88,7 @@ export async function recoverSchoolId(adminEmail: string): Promise<void> {
   if (orgs.length === 0) return;
 
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
-  sendSchoolIdRecoveryEmail({
+  await sendSchoolIdRecoveryEmail({
     adminEmail: normalizedEmail,
     schools: orgs.map((o) => ({ name: o.name, schoolId: o.schoolId })),
     loginUrl: `${frontendUrl}/org/login`,
@@ -151,16 +156,16 @@ export async function inviteStudentToOrg(
     lastName: lastName?.trim() || undefined,
   });
 
-  const sent = await sendOTPEmail(email, otp, 'signup');
-  if (!sent) throw Object.assign(new Error('Failed to send invite email. Please try again.'), { status: 502 });
-
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
-  sendWelcomeEmail({
+  const sent = await sendOrgInviteOTPEmail({
     email,
+    otp,
     firstName,
+    schoolName: org.name,
     schoolId: org.schoolId,
     loginUrl: `${frontendUrl}/student/login`,
   });
+  if (!sent) throw Object.assign(new Error('Failed to send invite email. Please try again.'), { status: 502 });
 
   return { email, expiresIn: OTP_EXPIRY_MINUTES * 60 };
 }
