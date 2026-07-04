@@ -99,7 +99,7 @@ export type JobStatus = {
 export type OrgRegisterResponse = { orgId: string; schoolId: string };
 
 /** Returned by POST /org/login/request (OTP send) — message-only */
-export type OtpRequestResponse = { email: string; orgId: string; expiresIn: number };
+export type OtpRequestResponse = { email: string; schoolId: string; expiresIn: number };
 
 /** Returned by POST /org/login/verify — inside successResponse.data */
 export type OtpVerifyResponse = {

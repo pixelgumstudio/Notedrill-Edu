@@ -19,15 +19,15 @@ export const sendOrgInviteOTP = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const { email, orgId } = parsed.data;
+    const { email, schoolId } = parsed.data;
 
-    const org = await Org.findById(orgId);
+    const org = await Org.findOne({ schoolId: schoolId.toUpperCase().trim() });
     if (!org) {
       res.status(404).json(errorResponse('Organisation not found.', ERROR_CODES.NOT_FOUND));
       return;
     }
 
-    const usedSeats = await User.countDocuments({ orgId: new Types.ObjectId(orgId) });
+    const usedSeats = await User.countDocuments({ orgId: org._id });
     if (org.seatLimit > 0 && usedSeats >= org.seatLimit) {
       res.status(403).json(errorResponse('Organisation seat limit reached.', ERROR_CODES.FORBIDDEN));
       return;
@@ -47,7 +47,7 @@ export const sendOrgInviteOTP = async (req: Request, res: Response): Promise<voi
     }
 
     res.status(200).json(
-      successResponse({ email, orgId, expiresIn: OTP_EXPIRY_MINUTES * 60 }, 'Invite OTP sent successfully.')
+      successResponse({ email, schoolId: org.schoolId, expiresIn: OTP_EXPIRY_MINUTES * 60 }, 'Invite OTP sent successfully.')
     );
   } catch (err: any) {
     console.error('[orgAuth] sendOrgInviteOTP error:', err.message);
@@ -196,7 +196,7 @@ export const verifyOrgInviteOTP = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    const { email, orgId, otp } = parsed.data;
+    const { email, schoolId, otp } = parsed.data;
 
     const otpRecord = await OTP.findOne({ email, type: 'org_invite', verified: false });
     if (!otpRecord) {
@@ -225,7 +225,7 @@ export const verifyOrgInviteOTP = async (req: Request, res: Response): Promise<v
     await OTP.updateOne({ _id: otpRecord._id }, { verified: true });
 
     // Determine role: the email that registered the org is the admin; everyone else is a student.
-    const org = await Org.findById(orgId);
+    const org = await Org.findOne({ schoolId: schoolId.toUpperCase().trim() });
     if (!org) {
       res.status(404).json(errorResponse('Organisation not found.', ERROR_CODES.NOT_FOUND));
       return;
@@ -240,7 +240,7 @@ export const verifyOrgInviteOTP = async (req: Request, res: Response): Promise<v
         email,
         name: username,
         username,
-        orgId: new Types.ObjectId(orgId),
+        orgId: org._id,
         role: assignedRole,
         authMethod: 'org_otp',
         authProvider: 'local',
@@ -251,7 +251,7 @@ export const verifyOrgInviteOTP = async (req: Request, res: Response): Promise<v
     } else {
       await User.updateOne(
         { _id: user._id },
-        { orgId: new Types.ObjectId(orgId), role: assignedRole, authMethod: 'org_otp' }
+        { orgId: org._id, role: assignedRole, authMethod: 'org_otp' }
       );
       // Sync the in-memory object so issueAndStoreTokens reads the updated role
       user.role = assignedRole;
@@ -267,7 +267,7 @@ export const verifyOrgInviteOTP = async (req: Request, res: Response): Promise<v
             email: user.email,
             name: user.name,
             username: user.username,
-            orgId,
+            orgId: org._id.toString(),
             role: user.role,
           },
           tokens,

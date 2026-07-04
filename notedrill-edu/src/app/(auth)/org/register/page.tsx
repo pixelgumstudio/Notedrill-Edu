@@ -212,9 +212,7 @@ function RegistrationSuccess({ result }: { result: OrgRegisterResponse & { orgNa
   };
 
   const continueToSignIn = () => {
-    router.push(
-      `/org/login?orgId=${encodeURIComponent(result.orgId)}&schoolId=${encodeURIComponent(result.schoolId)}`
-    );
+    router.push(`/org/login?schoolId=${encodeURIComponent(result.schoolId)}`);
   };
 
   return (

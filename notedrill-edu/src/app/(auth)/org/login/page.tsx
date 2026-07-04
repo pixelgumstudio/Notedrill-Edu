@@ -30,14 +30,11 @@ export default function OrgLoginPage() {
 function OrgLoginPageInner() {
   const searchParams = useSearchParams();
   // Populated when redirected here right after registration (see org/register/page.tsx).
-  // orgId is what actually authenticates — schoolId is just shown as a friendly reference,
-  // since OTP login still looks orgs up by their real orgId, not the human-readable schoolId.
-  const initialOrgId = searchParams.get("orgId") ?? "";
   const initialSchoolId = searchParams.get("schoolId") ?? "";
 
   const [step, setStep] = useState<Step>("request");
   const [prefillEmail, setPrefillEmail] = useState("");
-  const [prefillOrgId, setPrefillOrgId] = useState("");
+  const [prefillSchoolId, setPrefillSchoolId] = useState("");
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [forgotOpen, setForgotOpen] = useState(false);
@@ -66,7 +63,7 @@ function OrgLoginPageInner() {
           </h1>
           <p className="text-sm text-edu-blue-grey">
             {step === "request"
-              ? "Enter your email and org ID to receive a one-time code"
+              ? "Enter your email and School ID to receive a one-time code"
               : "Enter the 6-digit code sent to your email"}
           </p>
         </div>
@@ -82,19 +79,13 @@ function OrgLoginPageInner() {
           </div>
         )}
 
-        {step === "request" && initialSchoolId && (
-          <div className="mb-4 rounded-lg bg-edu-moss-light px-3.5 py-2.5 text-center text-[13px] font-semibold text-edu-moss-dark">
-            Signing in for School ID: {initialSchoolId}
-          </div>
-        )}
-
         {step === "request" ? (
           <>
             <RequestStep
-              initialOrgId={initialOrgId}
-              onSuccess={(email, orgId) => {
+              initialSchoolId={initialSchoolId}
+              onSuccess={(email, schoolId) => {
                 setPrefillEmail(email);
-                setPrefillOrgId(orgId);
+                setPrefillSchoolId(schoolId);
                 setSuccessMsg("Code sent! Check your email.");
                 setErrorMsg(null);
                 setStep("verify");
@@ -114,7 +105,7 @@ function OrgLoginPageInner() {
         ) : (
           <VerifyStep
             email={prefillEmail}
-            orgId={prefillOrgId}
+            schoolId={prefillSchoolId}
             onSuccess={(token) => {
               loginAsOrg(token);
               router.push("/edu/dashboard");
@@ -210,12 +201,12 @@ function ForgotSchoolIdModal({ onClose }: { onClose: () => void }) {
 }
 
 function RequestStep({
-  initialOrgId,
+  initialSchoolId,
   onSuccess,
   onError,
 }: {
-  initialOrgId?: string;
-  onSuccess: (email: string, orgId: string) => void;
+  initialSchoolId?: string;
+  onSuccess: (email: string, schoolId: string) => void;
   onError: (msg: string) => void;
 }) {
   const {
@@ -224,12 +215,12 @@ function RequestStep({
     formState: { errors },
   } = useForm<OrgOtpRequestInput>({
     resolver: zodResolver(orgOtpRequestSchema),
-    defaultValues: { orgId: initialOrgId ?? "" },
+    defaultValues: { schoolId: initialSchoolId ?? "" },
   });
 
   const mutation = useMutation({
     mutationFn: orgApi.requestOtp,
-    onSuccess: (_, vars) => onSuccess(vars.email, vars.orgId),
+    onSuccess: (_, vars) => onSuccess(vars.email, vars.schoolId),
     onError: (err: Error) => onError(err.message || "Failed to send code. Please try again."),
   });
 
@@ -248,11 +239,11 @@ function RequestStep({
         />
       </Field>
 
-      <Field label="Organisation ID" error={errors.orgId?.message}>
+      <Field label="School ID" error={errors.schoolId?.message}>
         <input
-          {...register("orgId")}
-          placeholder="e.g. org_abc123"
-          className={inputCls(!!errors.orgId)}
+          {...register("schoolId")}
+          placeholder="e.g. GREENWOOD-8392"
+          className={inputCls(!!errors.schoolId)}
         />
       </Field>
 
@@ -269,13 +260,13 @@ function RequestStep({
 
 function VerifyStep({
   email,
-  orgId,
+  schoolId,
   onSuccess,
   onBack,
   onError,
 }: {
   email: string;
-  orgId: string;
+  schoolId: string;
   onSuccess: (token: string) => void;
   onBack: () => void;
   onError: (msg: string) => void;
@@ -286,7 +277,7 @@ function VerifyStep({
     formState: { errors },
   } = useForm<OrgOtpVerifyInput>({
     resolver: zodResolver(orgOtpVerifySchema),
-    defaultValues: { email, orgId },
+    defaultValues: { email, schoolId },
   });
 
   const mutation = useMutation({
@@ -302,7 +293,7 @@ function VerifyStep({
       style={{ boxShadow: "var(--edu-shadow)" }}
     >
       <input type="hidden" {...register("email")} />
-      <input type="hidden" {...register("orgId")} />
+      <input type="hidden" {...register("schoolId")} />
 
       <Field label="One-Time Code" error={errors.otp?.message}>
         <input

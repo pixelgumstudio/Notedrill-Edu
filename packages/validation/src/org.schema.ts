@@ -13,12 +13,12 @@ export const orgRegisterSchema = z.object({
 
 export const orgOtpRequestSchema = z.object({
   email: z.string().email('Invalid email format'),
-  orgId: z.string().min(1, 'Organisation ID is required'),
+  schoolId: z.string().min(1, 'School ID is required'),
 });
 
 export const orgOtpVerifySchema = z.object({
   email: z.string().email('Invalid email format'),
-  orgId: z.string().min(1, 'Organisation ID is required'),
+  schoolId: z.string().min(1, 'School ID is required'),
   otp: z.string().length(6, 'OTP must be exactly 6 digits').regex(/^\d{6}$/, 'OTP must contain only digits'),
 });
 
