@@ -5,6 +5,8 @@ export type OrgPaymentGateway = 'paystack' | 'polar' | null;
 
 export interface IOrg extends Document {
   name: string;
+  /** The registering admin's personal name — used for their User.name at first login, not the org's name. */
+  adminName: string;
   /** Human-readable login/reference ID derived from the org name (e.g. "GREENWOOD-8392"). */
   schoolId: string;
   schoolType: 'university' | 'secondary' | 'primary' | 'tutoring_center' | 'other';
@@ -35,6 +37,11 @@ export interface IOrg extends Document {
 const OrgSchema = new Schema<IOrg>(
   {
     name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    adminName: {
       type: String,
       required: true,
       trim: true,

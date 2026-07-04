@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const orgRegisterSchema = z.object({
   name: z.string().min(2, 'Organisation name must be at least 2 characters'),
+  adminName: z.string().min(2, 'Your name must be at least 2 characters'),
   schoolType: z.enum(['university', 'secondary', 'primary', 'tutoring_center', 'other']),
   state: z.string().min(2, 'State is required'),
   city: z.string().min(2, 'City is required'),

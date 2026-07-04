@@ -148,18 +148,19 @@ async function sendMail(to: string, subject: string, html: string): Promise<bool
  */
 export const sendOrgWelcomeEmail = (params: {
   adminEmail: string;
+  adminName: string;
   orgName: string;
   schoolId: string;
   loginUrl: string;
 }): Promise<boolean> => {
-  const { adminEmail, orgName, schoolId, loginUrl } = params;
+  const { adminEmail, adminName, orgName, schoolId, loginUrl } = params;
 
   const html = wrapEmailHtml(
     'Your NoteDrill School ID',
     `
       <p style="color: #374151; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
-        <strong>${orgName}</strong> is now registered on NoteDrill. Keep this School ID somewhere
-        safe — you'll need it, along with your email, to sign in.
+        Hi ${adminName}, <strong>${orgName}</strong> is now registered on NoteDrill. Keep this
+        School ID somewhere safe — you'll need it, along with your email, to sign in.
       </p>
       <div style="background-color: #f3f4f6; border-radius: 12px; padding: 24px; text-align: center; margin: 30px 0;">
         <span style="font-size: 28px; font-weight: bold; color: #6366f1; letter-spacing: 2px;">${schoolId}</span>
@@ -174,21 +175,21 @@ export const sendOrgWelcomeEmail = (params: {
 };
 
 /**
- * Sends a newly-invited student their one-time sign-in code, framed as an
- * invite (school name + School ID + "no password needed") rather than the
- * generic verification email — this is the single email a student receives
- * when an admin adds them; it replaces sending a separate OTP email plus a
- * separate welcome email.
+ * Sends a newly-invited student their invite, framed with school context and
+ * "no password needed" — this is the single email a student receives when an
+ * admin adds them. No OTP is included: whatever code was generated for this
+ * invite is never shown to anyone and gets fully replaced the moment the
+ * student actually requests to sign in, so displaying it here would just be
+ * a stale, unusable number by the time most students get around to it.
  */
 export const sendOrgInviteOTPEmail = (params: {
   email: string;
-  otp: string;
   firstName?: string;
   schoolName: string;
   schoolId: string;
   loginUrl: string;
 }): Promise<boolean> => {
-  const { email, otp, firstName, schoolName, schoolId, loginUrl } = params;
+  const { email, firstName, schoolName, schoolId, loginUrl } = params;
   const greeting = firstName || 'there';
 
   const html = wrapEmailHtml(
@@ -196,14 +197,8 @@ export const sendOrgInviteOTPEmail = (params: {
     `
       <p style="color: #374151; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
         Hi ${greeting}, <strong>${schoolName}</strong> (School ID: ${schoolId}) has added you to
-        NoteDrill. You don't need a password — just enter your email and the one-time code below
-        to sign in.
-      </p>
-      <div style="background-color: #f3f4f6; border-radius: 12px; padding: 24px; text-align: center; margin: 30px 0;">
-        <span style="font-size: 36px; font-weight: bold; color: #6366f1; letter-spacing: 8px;">${otp}</span>
-      </div>
-      <p style="color: #6b7280; font-size: 14px; line-height: 1.6;">
-        This code will expire in <strong>10 minutes</strong>.
+        NoteDrill. You don't need a password — just visit the sign-in page, enter your email, and
+        we'll send you a one-time code right when you need it.
       </p>
       <p style="color: #6b7280; font-size: 14px; line-height: 1.6;">
         <a href="${loginUrl}" style="color: #6366f1;">Sign in to NoteDrill</a>

@@ -35,6 +35,17 @@ function formatDate(d: Date): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+/**
+ * Prefers the structured firstName/lastName captured at invite time over the
+ * blended `name` field, so a student's real name always wins over whatever
+ * `name` happened to be set to at account-creation time (e.g. legacy records
+ * or edge cases where the concatenation logic wasn't run).
+ */
+function deriveDisplayName(user: { firstName?: string; lastName?: string; name?: string; username?: string }): string {
+  const structured = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  return structured || user.name || user.username || 'Unknown';
+}
+
 const SUBSCRIPTION_STATUS_LABELS: Record<string, string> = {
   trialing: 'Trial active',
   active: 'Paid',
@@ -213,7 +224,7 @@ export const listStudents = async (req: AuthRequest, res: Response): Promise<voi
       const quiz = quizMap.get(sid);
       return {
         id: sid,
-        name: s.name || s.username,
+        name: deriveDisplayName(s),
         email: s.email,
         quizCount: quiz?.count ?? 0,
         avgScore: quiz?.avgScore != null ? Math.round(quiz.avgScore * 10) / 10 : null,
@@ -246,7 +257,7 @@ export const getOrgStudent = async (req: AuthRequest, res: Response): Promise<vo
     const orgObjectId = new mongoose.Types.ObjectId(orgId);
 
     const student = await User.findOne(
-      { _id: studentId, orgId: orgObjectId },
+      { _id: studentId, orgId: orgObjectId, role: 'student' },
       '-password -refreshTokenHashes -deviceTokens'
     ).lean();
 
@@ -279,7 +290,7 @@ export const getOrgStudent = async (req: AuthRequest, res: Response): Promise<vo
     res.json(
       successResponse({
         id: studentId,
-        name: (student as any).name || (student as any).username,
+        name: deriveDisplayName(student as any),
         email: student.email,
         quizCount: quizAgg[0]?.count ?? 0,
         avgScore: quizAgg[0]?.avgScore != null ? Math.round(quizAgg[0].avgScore * 10) / 10 : null,
@@ -359,7 +370,7 @@ export const addStudent = async (req: AuthRequest, res: Response): Promise<void>
 
     const result = await inviteStudentToOrg(orgId, email, firstName, lastName);
     res.json(
-      successResponse(result, `Invite sent to ${result.email}. OTP expires in ${result.expiresIn / 60} minutes.`)
+      successResponse(result, `Invite sent to ${result.email}.`)
     );
   } catch (err: any) {
     const status = err.status ?? 500;

@@ -163,6 +163,14 @@ export default function OrgRegisterPage() {
             />
           </Field>
 
+          <Field label="Your Name" error={errors.adminName?.message}>
+            <input
+              {...register("adminName")}
+              placeholder="e.g. Jane Doe"
+              className={inputCls(!!errors.adminName)}
+            />
+          </Field>
+
           <Field label="Admin Email" error={errors.adminEmail?.message}>
             <input
               {...register("adminEmail")}

@@ -39,7 +39,7 @@ export const createCheckout = async (req: AuthRequest, res: Response): Promise<v
     const nigeria = isNigeria(org.registeredCountry);
     const gateway: 'paystack' | 'polar' = nigeria ? 'paystack' : 'polar';
     const currency = nigeria ? 'NGN' : 'USD';
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://edu.notedrill.com';
     const successUrl = `${frontendUrl}/edu/billing?checkout=success`;
 
     const transaction = await Transaction.create({

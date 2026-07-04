@@ -6,6 +6,7 @@ import { generateOTP, sendOrgInviteOTPEmail, sendOrgWelcomeEmail, sendSchoolIdRe
 
 interface CreateOrgInput {
   name: string;
+  adminName: string;
   schoolType: IOrg['schoolType'];
   state: string;
   city: string;
@@ -65,9 +66,10 @@ export async function createOrg(input: CreateOrgInput): Promise<IOrg> {
   await org.save();
 
   // Best-effort — a flaky send here shouldn't undo an org that was already created.
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
+  const frontendUrl = process.env.FRONTEND_URL || 'https://edu.notedrill.com';
   await sendOrgWelcomeEmail({
     adminEmail: org.adminEmail,
+    adminName: org.adminName,
     orgName: org.name,
     schoolId: org.schoolId,
     loginUrl: `${frontendUrl}/org/login`,
@@ -87,7 +89,7 @@ export async function recoverSchoolId(adminEmail: string): Promise<void> {
   const orgs = await Org.find({ adminEmail: normalizedEmail }).lean();
   if (orgs.length === 0) return;
 
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
+  const frontendUrl = process.env.FRONTEND_URL || 'https://edu.notedrill.com';
   await sendSchoolIdRecoveryEmail({
     adminEmail: normalizedEmail,
     schools: orgs.map((o) => ({ name: o.name, schoolId: o.schoolId })),
@@ -100,7 +102,7 @@ export async function getOrgById(orgId: string): Promise<IOrg | null> {
 }
 
 export async function getOrgStudents(orgId: string) {
-  return User.find({ orgId: new Types.ObjectId(orgId), role: { $in: ['student', 'org_admin'] } })
+  return User.find({ orgId: new Types.ObjectId(orgId), role: 'student' })
     .select('-password -refreshTokenHashes -deviceTokens')
     .lean();
 }
@@ -120,10 +122,17 @@ export async function removeStudentFromOrg(orgId: string, userId: string): Promi
   );
 }
 
-const OTP_EXPIRY_MINUTES = 10;
+// The invite record's own OTP code is never shown to the student (see
+// sendOrgInviteOTPEmail) and gets fully replaced the moment they actually try
+// to log in (sendStudentLoginOTP deletes it and issues a fresh 10-minute
+// code). What this record actually needs to survive is the org-link lookup
+// students rely on for their *first* login — so it gets a much longer window
+// than a real OTP would, since nobody could act on it as a code even if they
+// wanted to.
+const INVITE_EXPIRY_DAYS = 7;
 
 /**
- * Send an OTP invite to an email address for a given org.
+ * Send an org invite to an email address for a given org.
  * Called by org_admin via POST /api/v1/org/:orgId/students/invite.
  * Returns the email and expiry so the controller can respond.
  */
@@ -145,7 +154,7 @@ export async function inviteStudentToOrg(
   await OTP.deleteMany({ email: email.toLowerCase().trim(), type: 'org_invite' });
 
   const otp = generateOTP();
-  const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+  const expiresAt = new Date(Date.now() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
   await OTP.create({
     email: email.toLowerCase().trim(),
     otp,
@@ -156,10 +165,9 @@ export async function inviteStudentToOrg(
     lastName: lastName?.trim() || undefined,
   });
 
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
+  const frontendUrl = process.env.FRONTEND_URL || 'https://edu.notedrill.com';
   const sent = await sendOrgInviteOTPEmail({
     email,
-    otp,
     firstName,
     schoolName: org.name,
     schoolId: org.schoolId,
@@ -167,7 +175,7 @@ export async function inviteStudentToOrg(
   });
   if (!sent) throw Object.assign(new Error('Failed to send invite email. Please try again.'), { status: 502 });
 
-  return { email, expiresIn: OTP_EXPIRY_MINUTES * 60 };
+  return { email, expiresIn: INVITE_EXPIRY_DAYS * 24 * 60 * 60 };
 }
 
 function calculateAmountDue(seats: number): number {

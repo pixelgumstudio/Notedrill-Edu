@@ -236,9 +236,14 @@ export const verifyOrgInviteOTP = async (req: Request, res: Response): Promise<v
     let user = await User.findOne({ email });
     if (!user) {
       const username = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '') + '_' + Math.random().toString(36).slice(2, 6);
+      // The admin's real name was captured at org registration; anyone else
+      // hitting this endpoint (a student, in the rare case they use the
+      // admin-facing verify route) has no captured name here, so falls back
+      // to the generated username same as before.
+      const name = assignedRole === 'org_admin' ? org.adminName : username;
       user = new User({
         email,
-        name: username,
+        name,
         username,
         orgId: org._id,
         role: assignedRole,
