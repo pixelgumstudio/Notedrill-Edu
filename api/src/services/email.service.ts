@@ -96,6 +96,31 @@ export const sendOTPEmail = async (
 };
 
 /**
+ * Sends a registration confirmation to the org admin, containing their
+ * School ID — this is the durable, retrievable record of that ID, since the
+ * UI only ever shows it transiently. Mocked via console.log for now, same
+ * as sendWelcomeEmail below.
+ */
+export const sendOrgWelcomeEmail = (params: {
+  adminEmail: string;
+  orgName: string;
+  schoolId: string;
+  loginUrl: string;
+}): void => {
+  const { adminEmail, orgName, schoolId, loginUrl } = params;
+
+  console.log(
+    `📧 [MOCK EMAIL] Welcome to NoteDrill\n` +
+    `To: ${adminEmail}\n` +
+    `Subject: Your NoteDrill School ID for ${orgName}\n\n` +
+    `Hi there,\n\n` +
+    `${orgName} is now registered on NoteDrill. Your School ID is: ${schoolId}\n\n` +
+    `Keep this ID somewhere safe — you'll need it (along with your email) to sign in.\n\n` +
+    `Sign in here: ${loginUrl}\n`
+  );
+};
+
+/**
  * Sends a "Welcome to NoteDrill" email to a newly-invited student, letting
  * them know an account exists and how to log in (email + OTP, no password).
  * Mocked via console.log for now — swap for a real template/transporter
@@ -118,6 +143,30 @@ export const sendWelcomeEmail = (params: {
     `Your school (School ID: ${schoolId}) has added you to NoteDrill. You don't need a password — ` +
     `just enter your email address (${email}) and we'll send you a one-time sign-in code.\n\n` +
     `Log in here: ${loginUrl}\n`
+  );
+};
+
+/**
+ * Sends the "forgot your School ID" recovery email — lists every School ID
+ * registered under this admin email, since Org.adminEmail has no uniqueness
+ * constraint and one admin can run multiple schools. Mocked via console.log.
+ */
+export const sendSchoolIdRecoveryEmail = (params: {
+  adminEmail: string;
+  schools: { name: string; schoolId: string }[];
+  loginUrl: string;
+}): void => {
+  const { adminEmail, schools, loginUrl } = params;
+  const schoolList = schools.map((s) => `  - ${s.name}: ${s.schoolId}`).join('\n');
+
+  console.log(
+    `📧 [MOCK EMAIL] Your NoteDrill School ID\n` +
+    `To: ${adminEmail}\n` +
+    `Subject: Your NoteDrill School ID\n\n` +
+    `Hi there,\n\n` +
+    `Here ${schools.length === 1 ? 'is the School ID' : 'are the School IDs'} registered to this email:\n\n` +
+    `${schoolList}\n\n` +
+    `Sign in here: ${loginUrl}\n`
   );
 };
 

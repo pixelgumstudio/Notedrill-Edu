@@ -28,7 +28,12 @@ export const addStudentSchema = z.object({
   lastName: z.string().optional(),
 });
 
+export const recoverSchoolIdSchema = z.object({
+  adminEmail: z.string().email('Invalid email format'),
+});
+
 export type OrgRegisterInput = z.infer<typeof orgRegisterSchema>;
 export type OrgOtpRequestInput = z.infer<typeof orgOtpRequestSchema>;
 export type OrgOtpVerifyInput = z.infer<typeof orgOtpVerifySchema>;
 export type AddStudentInput = z.infer<typeof addStudentSchema>;
+export type RecoverSchoolIdInput = z.infer<typeof recoverSchoolIdSchema>;

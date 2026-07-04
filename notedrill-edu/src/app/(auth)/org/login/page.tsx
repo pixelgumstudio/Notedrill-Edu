@@ -40,6 +40,7 @@ function OrgLoginPageInner() {
   const [prefillOrgId, setPrefillOrgId] = useState("");
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [forgotOpen, setForgotOpen] = useState(false);
 
   const { loginAsOrg } = useAuth();
   const router = useRouter();
@@ -88,17 +89,28 @@ function OrgLoginPageInner() {
         )}
 
         {step === "request" ? (
-          <RequestStep
-            initialOrgId={initialOrgId}
-            onSuccess={(email, orgId) => {
-              setPrefillEmail(email);
-              setPrefillOrgId(orgId);
-              setSuccessMsg("Code sent! Check your email.");
-              setErrorMsg(null);
-              setStep("verify");
-            }}
-            onError={(msg) => setErrorMsg(msg)}
-          />
+          <>
+            <RequestStep
+              initialOrgId={initialOrgId}
+              onSuccess={(email, orgId) => {
+                setPrefillEmail(email);
+                setPrefillOrgId(orgId);
+                setSuccessMsg("Code sent! Check your email.");
+                setErrorMsg(null);
+                setStep("verify");
+              }}
+              onError={(msg) => setErrorMsg(msg)}
+            />
+            <p className="mt-3 text-center text-xs text-edu-blue-grey">
+              <button
+                type="button"
+                onClick={() => setForgotOpen(true)}
+                className="text-edu-moss hover:underline font-medium"
+              >
+                Forgot your School ID?
+              </button>
+            </p>
+          </>
         ) : (
           <VerifyStep
             email={prefillEmail}
@@ -119,7 +131,81 @@ function OrgLoginPageInner() {
           </a>
         </p>
       </div>
+
+      {forgotOpen && <ForgotSchoolIdModal onClose={() => setForgotOpen(false)} />}
     </main>
+  );
+}
+
+function ForgotSchoolIdModal({ onClose }: { onClose: () => void }) {
+  const [adminEmail, setAdminEmail] = useState("");
+  const [sent, setSent] = useState(false);
+
+  const mutation = useMutation({
+    mutationFn: () => orgApi.recoverSchoolId(adminEmail),
+    // Always shows the same generic confirmation, regardless of whether the
+    // email matched anything — matches the backend's privacy-preserving design.
+    onSuccess: () => setSent(true),
+    onError: () => setSent(true),
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-[1000] flex items-center justify-center bg-edu-moss-dark/45 p-5"
+      onClick={(e) => e.currentTarget === e.target && onClose()}
+    >
+      <div className="w-full max-w-[420px] rounded-xl bg-white p-7" style={{ boxShadow: "0 10px 40px rgba(0,0,0,0.25)" }}>
+        {sent ? (
+          <>
+            <h3 className="mb-2 font-source-serif text-lg text-edu-ink">Check your email</h3>
+            <p className="mb-5 text-sm leading-relaxed text-edu-blue-grey">
+              If an account exists for that email, we&apos;ve sent the School ID(s) to it.
+            </p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full rounded-lg bg-edu-moss py-2.5 text-sm font-bold text-white hover:bg-edu-moss-dark"
+            >
+              Close
+            </button>
+          </>
+        ) : (
+          <>
+            <h3 className="mb-2 font-source-serif text-lg text-edu-ink">Forgot your School ID?</h3>
+            <p className="mb-5 text-sm leading-relaxed text-edu-blue-grey">
+              Enter your admin email and we&apos;ll send your School ID(s) to it.
+            </p>
+            <div className="mb-5">
+              <label className="mb-1.5 block text-[12.5px] font-semibold text-edu-ink">Admin Email</label>
+              <input
+                type="email"
+                value={adminEmail}
+                onChange={(e) => setAdminEmail(e.target.value)}
+                placeholder="admin@school.edu.ng"
+                className="w-full rounded-lg border-[1.5px] border-edu-line bg-edu-paper p-2.5 text-sm focus:border-edu-moss focus:outline-none"
+              />
+            </div>
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 rounded-lg border-[1.5px] border-edu-line py-2.5 text-sm font-bold text-edu-blue-grey hover:bg-edu-paper-2"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!adminEmail || mutation.isPending}
+                onClick={() => mutation.mutate()}
+                className="flex-1 rounded-lg bg-edu-moss py-2.5 text-sm font-bold text-white hover:bg-edu-moss-dark disabled:opacity-60"
+              >
+                {mutation.isPending ? "Sending…" : "Send"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

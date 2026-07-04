@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
 import {
   registerOrg,
+  recoverSchoolIdHandler,
   getOrgDashboard,
   listStudents,
   getOrgStudent,
@@ -51,6 +52,8 @@ router.post('/student/login/verify', verifyStudentLoginOTP);
 // ── Org registration ──────────────────────────────────────────────────────────
 // POST /register — public (superadmin-initiated onboarding flow)
 router.post('/register', registerOrg);
+// POST /recover-school-id — public "forgot your School ID" recovery
+router.post('/recover-school-id', recoverSchoolIdHandler);
 
 // ── Dashboard — orgId derived from JWT ───────────────────────────────────────
 router.get('/dashboard', authenticate, requireRole('org_admin', 'superadmin'), getOrgDashboard);

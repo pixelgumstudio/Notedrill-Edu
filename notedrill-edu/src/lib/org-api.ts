@@ -142,6 +142,13 @@ export const orgApi = {
       body: JSON.stringify(data),
     }),
 
+  /** "Forgot your School ID" — always resolves with a generic message. POST /org/recover-school-id */
+  recoverSchoolId: (adminEmail: string): Promise<null> =>
+    orgFetch<null>('/recover-school-id', {
+      method: 'POST',
+      body: JSON.stringify({ adminEmail }),
+    }),
+
   /** Request an OTP for org admin login. POST /org/login/request */
   requestOtp: (data: OrgOtpRequestInput): Promise<OtpRequestResponse> =>
     orgFetch<OtpRequestResponse>('/login/request', {

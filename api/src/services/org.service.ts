@@ -2,7 +2,7 @@ import { Org, IOrg } from '../models/Org';
 import { User } from '../models/User';
 import { OTP } from '../models/OTP';
 import { Types } from 'mongoose';
-import { generateOTP, sendOTPEmail, sendWelcomeEmail } from './email.service';
+import { generateOTP, sendOTPEmail, sendWelcomeEmail, sendOrgWelcomeEmail, sendSchoolIdRecoveryEmail } from './email.service';
 
 interface CreateOrgInput {
   name: string;
@@ -59,7 +59,35 @@ export async function createOrg(input: CreateOrgInput): Promise<IOrg> {
   });
 
   await org.save();
+
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
+  sendOrgWelcomeEmail({
+    adminEmail: org.adminEmail,
+    orgName: org.name,
+    schoolId: org.schoolId,
+    loginUrl: `${frontendUrl}/org/login`,
+  });
+
   return org;
+}
+
+/**
+ * Looks up every org registered under an admin email and (if any exist)
+ * emails their School IDs back. Always resolves without error and never
+ * reveals whether the email matched anything, to avoid leaking which admin
+ * emails have accounts.
+ */
+export async function recoverSchoolId(adminEmail: string): Promise<void> {
+  const normalizedEmail = adminEmail.toLowerCase().trim();
+  const orgs = await Org.find({ adminEmail: normalizedEmail }).lean();
+  if (orgs.length === 0) return;
+
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
+  sendSchoolIdRecoveryEmail({
+    adminEmail: normalizedEmail,
+    schools: orgs.map((o) => ({ name: o.name, schoolId: o.schoolId })),
+    loginUrl: `${frontendUrl}/org/login`,
+  });
 }
 
 export async function getOrgById(orgId: string): Promise<IOrg | null> {

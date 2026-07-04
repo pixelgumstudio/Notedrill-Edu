@@ -9,8 +9,9 @@ import {
   getOrgSeatUsage,
   removeStudentFromOrg,
   inviteStudentToOrg,
+  recoverSchoolId,
 } from '../services/org.service';
-import { orgRegisterSchema, addStudentSchema } from '@notedrill/validation';
+import { orgRegisterSchema, addStudentSchema, recoverSchoolIdSchema } from '@notedrill/validation';
 import { User } from '../models/User';
 import Note from '../models/Note';
 import Quiz from '../models/Quiz';
@@ -70,6 +71,27 @@ export const registerOrg = async (req: AuthRequest, res: Response): Promise<void
       { orgId: org._id.toString(), schoolId: org.schoolId },
       'Organisation registered successfully.'
     ));
+  } catch (err: any) {
+    const status = err.status ?? 500;
+    res.status(status).json(errorResponse(err.message, ERROR_CODES.SERVER_ERROR));
+  }
+};
+
+/**
+ * Public "forgot your School ID" endpoint. Always returns a generic success
+ * message regardless of whether the email matched anything, so this can't be
+ * used to enumerate which admin emails have accounts.
+ */
+export const recoverSchoolIdHandler = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const parsed = recoverSchoolIdSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json(errorResponse(parsed.error.errors[0].message, ERROR_CODES.VALIDATION_ERROR));
+      return;
+    }
+
+    await recoverSchoolId(parsed.data.adminEmail);
+    res.json(successResponse(null, 'If an account exists for this email, we\'ve sent the School ID to it.'));
   } catch (err: any) {
     const status = err.status ?? 500;
     res.status(status).json(errorResponse(err.message, ERROR_CODES.SERVER_ERROR));
