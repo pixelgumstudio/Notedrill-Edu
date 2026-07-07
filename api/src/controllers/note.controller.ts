@@ -11,6 +11,12 @@ import { createJob, updateJob, getJobForUser } from '../services/job.service';
 import { checkQuota, incrementQuota, QuotaExceededError } from '../services/quota.service';
 import { User } from '../models/User';
 import notificationService from '../services/notification.service';
+import { getNoteSourceText } from '../utils/noteSource';
+
+const DOC_MIME_TYPES = [
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
 
 function generateDefaultTitle(sourceType: string): string {
   const date = new Date().toLocaleDateString();
@@ -462,7 +468,7 @@ export const generateNote = async (req: AuthRequest, res: Response) => {
       if (sourceType === 'audio' && !file.mimetype.startsWith('audio/')) {
         return res.status(400).json({ message: 'Unsupported file type for sourceType: audio' });
       }
-      if (sourceType === 'pdf' && file.mimetype !== 'application/pdf') {
+      if (sourceType === 'pdf' && file.mimetype !== 'application/pdf' && !DOC_MIME_TYPES.includes(file.mimetype)) {
         return res.status(400).json({ message: 'Unsupported file type for sourceType: pdf' });
       }
       if (sourceType === 'image' && !file.mimetype.startsWith('image/')) {
@@ -551,6 +557,10 @@ export const generateNote = async (req: AuthRequest, res: Response) => {
       let noteTitle = capturedTitle || 'Untitled Note';
       let noteSummary = '';
       let metadata: any = {};
+      // True raw extracted/source text (OCR, PDF/doc parse, or pasted text) —
+      // captured BEFORE noteContent gets overwritten by the AI-generated note,
+      // so quiz/flashcard generation can work from the source, not the summary.
+      let rawSourceText = capturedContent || '';
 
       try {
         if (capturedTempFilePath) {
@@ -636,7 +646,58 @@ export const generateNote = async (req: AuthRequest, res: Response) => {
             }
 
             noteContent = ocrResult.text;
+            rawSourceText = ocrResult.text;
             metadata = { originalFileName: capturedFileOriginalname, fileKey, ocrConfidence: ocrResult.confidence };
+
+            const generatedNote = await noteGenerationService.generateNote(
+              noteContent, capturedSourceType, { goals: userGoals }
+            );
+            noteContent = generatedNote.content;
+            noteSummary = generatedNote.summary || '';
+            const isGenericFilename = !capturedTitle ||
+                                      capturedTitle === 'Untitled Note' ||
+                                      /^IMG_/i.test(capturedTitle) ||
+                                      /\.(pdf|png|jpe?g|txt|docx?)$/i.test(capturedTitle);
+
+            if (isGenericFilename) {
+              noteTitle = generatedNote.title || generateDefaultTitle(capturedSourceType);
+            } else {
+              noteTitle = capturedTitle;
+            }
+
+          } else if (capturedFileMimetype && DOC_MIME_TYPES.includes(capturedFileMimetype)) {
+            // ── Word doc (.doc/.docx): extract text from disk → upload to storage → AI generation ──
+            const docxService = (await import('../services/docx.service')).default;
+            const storageService = (await import('../services/storage.service')).default;
+            const noteGenerationService = (await import('../services/noteGeneration.service')).default;
+
+            const fileBuffer = await fs.promises.readFile(capturedTempFilePath);
+
+            const docResult = await docxService.extractTextFromBuffer(fileBuffer);
+
+            const words = docResult.text.trim().split(/\s+/).filter(w => w.length > 2);
+            if (words.length < 50) {
+              throw Object.assign(
+                new Error('Could not extract enough readable text from this document. The file may be empty, corrupted, or contain mostly images.'),
+                { code: 'PDF_QUALITY' }
+              );
+            }
+            noteContent = docResult.text;
+            rawSourceText = docResult.text;
+            metadata = { originalFileName: capturedFileOriginalname };
+
+            let fileKey: string = '';
+            try {
+              fileKey = await storageService.uploadFile(
+                fileBuffer,
+                `documents/${userId}/${Date.now()}-${capturedFileOriginalname}`,
+                capturedFileMimetype!
+              );
+              metadata.fileKey = fileKey;
+            } catch (uploadError: any) {
+              console.warn('⚠️ MinIO upload failed (non-fatal for document), continuing:', uploadError.message);
+              // Continue without MinIO — extraction already succeeded
+            }
 
             const generatedNote = await noteGenerationService.generateNote(
               noteContent, capturedSourceType, { goals: userGoals }
@@ -685,6 +746,7 @@ export const generateNote = async (req: AuthRequest, res: Response) => {
               if (ocrWords.length >= 50) {
                 console.log(`✅ [PDF] OCR fallback succeeded — ${ocrWords.length} words extracted`);
                 noteContent = ocrText;
+                rawSourceText = ocrText;
               } else {
                 // Both methods failed — surface a user-friendly error
                 const reason = pdfResult.pdfType === 'scanned'
@@ -695,6 +757,7 @@ export const generateNote = async (req: AuthRequest, res: Response) => {
               // ── End OCR Fallback ───────────────────────────────────────────────
             } else {
               noteContent = pdfResult.text;
+              rawSourceText = pdfResult.text;
             }
             metadata = { pages: pdfResult.pages, originalFileName: capturedFileOriginalname };
 
@@ -735,9 +798,50 @@ export const generateNote = async (req: AuthRequest, res: Response) => {
           const noteGenerationService = (await import('../services/noteGeneration.service')).default;
 
           if (capturedSourceType === 'youtube') {
-            const videoTitle = capturedTitle || 'YouTube Video Note';
+            // ── YouTube: fetch real transcript → AI generation ──
+            // noteContent currently holds the raw URL the user pasted, not a
+            // transcript — fetch the actual captions before generating.
+            const youtubeService = (await import('../services/youtube.service')).default;
+            const youtubeUrl = noteContent;
+
+            if (!youtubeService.isValidYouTubeUrl(youtubeUrl)) {
+              throw Object.assign(
+                new Error('That doesn\'t look like a valid YouTube URL. Please check the link and try again.'),
+                { code: 'YOUTUBE_INVALID_URL' }
+              );
+            }
+
+            let transcriptResult;
+            try {
+              transcriptResult = await youtubeService.getTranscript(youtubeUrl);
+            } catch (transcriptErr: any) {
+              console.error('❌ [YouTube] Transcript fetch failed:', transcriptErr.message);
+              throw Object.assign(
+                new Error('Could not fetch a transcript for this video. It may have captions disabled — try a different video.'),
+                { code: 'YOUTUBE_TRANSCRIPT_UNAVAILABLE' }
+              );
+            }
+
+            const words = transcriptResult.transcript.trim().split(/\s+/).filter(w => w.length > 2);
+            if (words.length < 20) {
+              throw Object.assign(
+                new Error('This video\'s transcript is too short to generate useful notes from.'),
+                { code: 'YOUTUBE_TRANSCRIPT_UNAVAILABLE' }
+              );
+            }
+
+            const videoInfo = await youtubeService.getVideoInfo(youtubeUrl).catch(() => null);
+            const videoTitle = capturedTitle || videoInfo?.title || 'YouTube Video Note';
+
+            rawSourceText = transcriptResult.transcript;
+            metadata = {
+              youtubeVideoId: transcriptResult.videoId,
+              youtubeTitle: videoInfo?.title,
+              youtubeThumbnail: videoInfo?.thumbnail,
+            };
+
             const generatedNote = await noteGenerationService.generateNoteFromYouTube(
-              noteContent, videoTitle, { goals: userGoals }
+              rawSourceText, videoTitle, { goals: userGoals }
             );
             noteContent = generatedNote.content;
             noteSummary = generatedNote.summary || '';
@@ -766,7 +870,7 @@ export const generateNote = async (req: AuthRequest, res: Response) => {
             orgId: capturedOrgId,
             metadata,
             processingStatus: 'completed',
-            extractedContent: noteContent,
+            extractedContent: rawSourceText || noteContent,
           } as any);
           noteResult = note.toObject ? note.toObject() : note;
         }
@@ -801,6 +905,8 @@ export const generateNote = async (req: AuthRequest, res: Response) => {
           userMessage = 'We couldn\'t extract enough readable text from this PDF. Try a text-based PDF with clear content, or copy-paste the text instead.';
         } else if (error.code === 'IMAGE_QUALITY') {
           userMessage = 'We couldn\'t extract enough readable text from this image. Try a clearer, well-lit photo of the text.';
+        } else if (error.code === 'YOUTUBE_INVALID_URL' || error.code === 'YOUTUBE_TRANSCRIPT_UNAVAILABLE') {
+          userMessage = error.message;
         } else if (error.message?.includes('AI_REFUSAL')) {
           userMessage = 'The extracted content wasn\'t suitable for note generation. Please try a different document.';
         }
@@ -919,13 +1025,14 @@ export const generateMore = async (req: AuthRequest, res: Response) => {
       $or: [{ userId }, ...(req.user!.orgId ? [{ orgId: req.user!.orgId }] : [])],
     });
 
-    if (!note || !note.content?.trim()) {
+    const sourceText = note ? getNoteSourceText(note) : '';
+    if (!note || !sourceText) {
       return res.status(404).json({ success: false, message: 'Note not found or has no content' });
     }
 
     if (type === 'quiz') {
       const quizGenerationService = (await import('../services/quizGeneration.service')).default;
-      const quizData = await quizGenerationService.generateQuiz(note.content, note.title, {
+      const quizData = await quizGenerationService.generateQuiz(sourceText, note.title, {
         questionCount: Math.min(count, 20),
         difficulty: 'medium',
         questionTypes: ['multiple-choice'],
@@ -958,7 +1065,7 @@ export const generateMore = async (req: AuthRequest, res: Response) => {
 
     // flashcards
     const flashcardGenerationService = (await import('../services/flashcardGeneration.service')).default;
-    const cards = await flashcardGenerationService.generateFlashcards(note.content, note.title, {
+    const cards = await flashcardGenerationService.generateFlashcards(sourceText, note.title, {
       cardCount: Math.min(count, 20),
       difficulty: 'medium',
     });

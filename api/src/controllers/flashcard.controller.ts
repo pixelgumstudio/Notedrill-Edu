@@ -6,6 +6,7 @@ import Note from '../models/Note';
 import { User } from '../models/User';
 import flashcardGenerationService from '../services/flashcardGeneration.service';
 import { checkQuota, incrementQuota, QuotaExceededError } from '../services/quota.service';
+import { getNoteSourceText } from '../utils/noteSource';
 
 class FlashcardController {
   /**
@@ -73,7 +74,10 @@ class FlashcardController {
         });
       }
 
-      if (!note.content || note.content.trim().length < 100) {
+      // Prefer the raw extracted/transcribed source text over the AI summary
+      // in note.content — richer, less lossy material to generate cards from.
+      const sourceText = getNoteSourceText(note);
+      if (sourceText.length < 100) {
         return res.status(400).json({
           success: false,
           message: 'Note content is too short to generate flashcards. Minimum 100 characters required.',
@@ -87,7 +91,7 @@ class FlashcardController {
 
       // Generate flashcards
       const flashcards = await flashcardGenerationService.generateFlashcards(
-        note.content,
+        sourceText,
         note.title,
         {
           cardCount,

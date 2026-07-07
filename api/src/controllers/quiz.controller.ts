@@ -6,6 +6,7 @@ import Note from '../models/Note';
 import { User } from '../models/User';
 import quizGenerationService from '../services/quizGeneration.service';
 import { checkQuota, incrementQuota, QuotaExceededError } from '../services/quota.service';
+import { getNoteSourceText } from '../utils/noteSource';
 
 class QuizController {
   /**
@@ -68,8 +69,10 @@ class QuizController {
         });
       }
 
-      // Check if note has content
-      if (!note.content || note.content.trim().length === 0) {
+      // Prefer the raw extracted/transcribed source text over the AI summary
+      // in note.content — richer, less lossy material to generate questions from.
+      const sourceText = getNoteSourceText(note);
+      if (!sourceText) {
         return res.status(400).json({
           success: false,
           message: 'Note must have content to generate a quiz',
@@ -87,17 +90,17 @@ class QuizController {
 
       if (quizType === 'practice') {
         quizData = await quizGenerationService.generatePracticeQuiz(
-          note.content,
+          sourceText,
           note.title
         );
       } else if (quizType === 'comprehensive') {
         quizData = await quizGenerationService.generateComprehensiveQuiz(
-          note.content,
+          sourceText,
           note.title
         );
       } else {
         quizData = await quizGenerationService.generateQuiz(
-          note.content,
+          sourceText,
           note.title,
           {
             questionCount,
@@ -290,17 +293,25 @@ class QuizController {
         .sort({ createdAt: -1 })
         .lean();
 
-      // Transform questions to ensure options have id and text format
+      // Transform to match the shape generateQuiz() returns — the frontend
+      // review UI expects a per-question `id` and `question` (alias of
+      // questionText), not just the raw stored subdocument fields.
       const transformedQuizzes = quizzes.map((quiz: any) => ({
         ...quiz,
-        questions: quiz.questions.map((question: any) => ({
-          ...question,
+        questions: quiz.questions.map((question: any, qIndex: number) => ({
+          id: `question-${qIndex}`,
+          question: question.questionText,
+          questionText: question.questionText,
+          questionType: question.questionType,
           options: Array.isArray(question.options) && typeof question.options[0] === 'string'
             ? question.options.map((optionText: string, index: number) => ({
                 id: `option-${index}`,
                 text: optionText,
               }))
             : question.options, // Already in correct format
+          correctAnswer: question.correctAnswer,
+          explanation: question.explanation,
+          difficulty: question.difficulty,
         })),
       }));
 

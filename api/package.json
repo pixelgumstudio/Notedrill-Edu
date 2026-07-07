@@ -57,6 +57,7 @@
     "redis": "^4.6.10",
     "tesseract.js": "^6.0.1",
     "uuid": "^13.0.0",
+    "word-extractor": "^1.0.4",
     "youtube-transcript": "^1.2.1"
   },
   "devDependencies": {

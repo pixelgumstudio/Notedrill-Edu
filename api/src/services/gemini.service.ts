@@ -61,7 +61,10 @@ class GeminiService {
         model: "gemini-2.5-flash",  // Verified available model
         generationConfig: {
           responseMimeType: "application/json",
-          maxOutputTokens: 8192 // 🚀 Force a massive limit to prevent mid-JSON cutoff
+          // gemini-2.5-flash supports up to 65536 output tokens. 8192 was too low for
+          // long/dense source documents — the model would get cut off mid-string,
+          // producing unparsable JSON and losing the whole note.
+          maxOutputTokens: 32768
         }
       });
 
@@ -89,6 +92,9 @@ class GeminiService {
         jsonData = safeParseJSON<any>(cleanText);
       } catch (parseError: any) {
         console.error('Malformed JSON from Gemini:', cleanText.substring(0, 500));
+        if (response.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
+          throw new Error('The source document is too long to summarize in one pass. Try a shorter document or split it into smaller sections.');
+        }
         throw new Error(`Failed to parse JSON response: ${parseError.message}`);
       }
 
@@ -151,7 +157,7 @@ class GeminiService {
       const genAI = this.initializeGenAI();
       const model = genAI.getGenerativeModel({
         model: 'gemini-2.5-flash',
-        generationConfig: { maxOutputTokens: 8192 },
+        generationConfig: { maxOutputTokens: 32768 },
       });
 
       const result = await model.generateContent([
