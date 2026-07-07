@@ -17,24 +17,124 @@ import type {
   AdminGeneratedQuiz,
   AdminGeneratedFlashcardSet,
 } from '@/types/edu';
+import {
+  ORG_TOKEN_KEY,
+  STUDENT_TOKEN_KEY,
+  ORG_REFRESH_TOKEN_KEY,
+  STUDENT_REFRESH_TOKEN_KEY,
+  TOKEN_REFRESHED_EVENT,
+  SESSION_EXPIRED_EVENT,
+} from '@/context/AuthContext';
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8081/api/v1';
 
 type RequestOptions = RequestInit & { token?: string };
 
+// ── Silent token refresh ────────────────────────────────────────────────────
+// Access tokens expire after 15 minutes. When an authenticated call comes
+// back TOKEN_EXPIRED, we transparently exchange the stored refresh token for
+// a new pair and retry once — the caller never sees the expiry. Concurrent
+// 401s share a single in-flight refresh per token kind (dedup) since the
+// refresh token rotates server-side and a second call with the same
+// already-consumed refresh token would fail.
+
+let orgRefreshPromise: Promise<string | null> | null = null;
+let studentRefreshPromise: Promise<string | null> | null = null;
+
+function tokenKind(token: string): 'org' | 'student' | null {
+  if (typeof window === 'undefined') return null;
+  if (token === localStorage.getItem(ORG_TOKEN_KEY)) return 'org';
+  if (token === localStorage.getItem(STUDENT_TOKEN_KEY)) return 'student';
+  return null;
+}
+
+async function doRefresh(kind: 'org' | 'student'): Promise<string | null> {
+  const accessKey = kind === 'org' ? ORG_TOKEN_KEY : STUDENT_TOKEN_KEY;
+  const refreshKey = kind === 'org' ? ORG_REFRESH_TOKEN_KEY : STUDENT_REFRESH_TOKEN_KEY;
+  const refreshToken = localStorage.getItem(refreshKey);
+
+  if (!refreshToken) {
+    window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, { detail: { kind } }));
+    return null;
+  }
+
+  try {
+    const res = await fetch(`${BASE_URL}/auth/refresh-token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!res.ok) throw new Error('Refresh failed');
+
+    const json = await res.json();
+    const tokens = json?.data?.tokens as { accessToken?: string; refreshToken?: string } | undefined;
+    if (!tokens?.accessToken || !tokens?.refreshToken) throw new Error('Malformed refresh response');
+
+    localStorage.setItem(accessKey, tokens.accessToken);
+    localStorage.setItem(refreshKey, tokens.refreshToken);
+    window.dispatchEvent(new CustomEvent(TOKEN_REFRESHED_EVENT, { detail: { kind, accessToken: tokens.accessToken } }));
+    return tokens.accessToken;
+  } catch {
+    localStorage.removeItem(accessKey);
+    localStorage.removeItem(refreshKey);
+    window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, { detail: { kind } }));
+    return null;
+  }
+}
+
+function refreshAccessToken(expiredToken: string): Promise<string | null> {
+  const kind = tokenKind(expiredToken);
+  if (!kind) return Promise.resolve(null);
+
+  if (kind === 'org') {
+    if (!orgRefreshPromise) {
+      orgRefreshPromise = doRefresh('org').finally(() => { orgRefreshPromise = null; });
+    }
+    return orgRefreshPromise;
+  }
+  if (!studentRefreshPromise) {
+    studentRefreshPromise = doRefresh('student').finally(() => { studentRefreshPromise = null; });
+  }
+  return studentRefreshPromise;
+}
+
+/**
+ * Runs `makeRequest` with the given token; on a 401 TOKEN_EXPIRED response,
+ * silently refreshes and retries once with the new token.
+ */
+async function fetchWithAuthRetry(
+  makeRequest: (token: string | undefined) => Promise<Response>,
+  token: string | undefined,
+): Promise<Response> {
+  const res = await makeRequest(token);
+  if (res.status !== 401 || !token) return res;
+
+  const body = await res.clone().json().catch(() => null);
+  if (body?.code !== 'TOKEN_EXPIRED') return res;
+
+  const newToken = await refreshAccessToken(token);
+  if (!newToken) return res;
+
+  return makeRequest(newToken);
+}
+
 /** Fetch from /api/v1/org/* and unwrap the `.data` field from successResponse. */
 async function orgFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { token, ...fetchOptions } = options;
 
-  const res = await fetch(`${BASE_URL}/org${path}`, {
-    ...fetchOptions,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(fetchOptions.headers ?? {}),
-    },
-  });
+  const res = await fetchWithAuthRetry(
+    (tok) =>
+      fetch(`${BASE_URL}/org${path}`, {
+        ...fetchOptions,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
+          ...(fetchOptions.headers ?? {}),
+        },
+      }),
+    token,
+  );
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -50,14 +150,18 @@ async function orgFetch<T>(path: string, options: RequestOptions = {}): Promise<
 async function baseFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { token, ...fetchOptions } = options;
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...fetchOptions,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(fetchOptions.headers ?? {}),
-    },
-  });
+  const res = await fetchWithAuthRetry(
+    (tok) =>
+      fetch(`${BASE_URL}${path}`, {
+        ...fetchOptions,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
+          ...(fetchOptions.headers ?? {}),
+        },
+      }),
+    token,
+  );
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -70,11 +174,15 @@ async function baseFetch<T>(path: string, options: RequestOptions = {}): Promise
 
 /** Multipart POST — does NOT set Content-Type (browser sets multipart boundary). */
 async function uploadFetch<T>(path: string, token: string | undefined, body: FormData): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body,
-  });
+  const res = await fetchWithAuthRetry(
+    (tok) =>
+      fetch(`${BASE_URL}${path}`, {
+        method: 'POST',
+        headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+        body,
+      }),
+    token,
+  );
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -364,6 +472,20 @@ export const orgApi = {
         difficulty: opts.difficulty ?? 'medium',
       }),
     }),
+
+  /**
+   * Get previously-generated quizzes for a note. GET /quizzes/note/:noteId
+   * Used to restore the Assessments tab when re-visiting a file workspace.
+   */
+  getQuizzesByNote: (token: string, noteId: string): Promise<AdminGeneratedQuiz[]> =>
+    baseFetch<AdminGeneratedQuiz[]>(`/quizzes/note/${noteId}`, { token }),
+
+  /**
+   * Get previously-generated flashcard sets for a note. GET /flashcards?noteId=...
+   * Used to restore the Assessments tab when re-visiting a file workspace.
+   */
+  getFlashcardSetsByNote: (token: string, noteId: string): Promise<AdminGeneratedFlashcardSet[]> =>
+    baseFetch<AdminGeneratedFlashcardSet[]>(`/flashcards?noteId=${noteId}`, { token }),
 
   /** Delete a quiz. DELETE /quizzes/:id */
   deleteQuiz: (token: string, quizId: string): Promise<{ success: boolean; message: string }> =>

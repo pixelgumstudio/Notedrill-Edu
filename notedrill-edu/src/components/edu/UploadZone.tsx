@@ -8,11 +8,11 @@ interface UploadZoneProps {
   onUpload?: (file: File | null, source: SourceTab, text?: string) => void;
 }
 
-const sourceTabs: { id: SourceTab; label: string; icon: string }[] = [
-  { id: "pdf", label: "PDF / Document", icon: "📄" },
-  { id: "text", label: "Text", icon: "✎" },
-  { id: "youtube", label: "YouTube link", icon: "▶" },
-  { id: "image", label: "Image", icon: "🖼" },
+const sourceTabs: { id: SourceTab; label: string }[] = [
+  { id: "pdf", label: "PDF / Document" },
+  { id: "text", label: "Text" },
+  { id: "youtube", label: "YouTube link" },
+  { id: "image", label: "Image" },
 ];
 
 export default function UploadZone({ onUpload }: UploadZoneProps) {
@@ -56,17 +56,16 @@ export default function UploadZone({ onUpload }: UploadZoneProps) {
     >
       {/* Source selector tabs */}
       <div className="mb-5 flex flex-wrap justify-center gap-2">
-        {sourceTabs.map(({ id, label, icon }) => (
+        {sourceTabs.map(({ id, label }) => (
           <button
             key={id}
             onClick={() => setActiveSource(id)}
-            className={`flex items-center gap-1.5 rounded-lg border-[1.5px] px-4 py-2 text-[12.5px] font-bold transition-colors ${
+            className={`rounded-full border-[1.5px] px-4 py-2 text-[12.5px] font-bold transition-colors ${
               activeSource === id
                 ? "border-edu-moss bg-edu-moss-light text-edu-moss-dark"
                 : "border-edu-line bg-white text-edu-blue-grey hover:border-edu-moss hover:text-edu-moss-dark"
             }`}
           >
-            <span>{icon}</span>
             {label}
           </button>
         ))}

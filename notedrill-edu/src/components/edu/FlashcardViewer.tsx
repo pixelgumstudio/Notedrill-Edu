@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import type { AdminFlashcard } from "@/types/edu";
+import EmptyState from "./EmptyState";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -120,10 +121,12 @@ export default function FlashcardViewer({
 
   if (total === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-edu-line bg-edu-paper-2 py-12 text-center">
-        <span className="mb-2 text-4xl">🃏</span>
-        <p className="text-sm text-edu-blue-grey">No cards in this set.</p>
-      </div>
+      <EmptyState
+        mark="F"
+        heading="No cards in this set"
+        body="This flashcard deck doesn't have any cards yet."
+        className="rounded-xl border border-edu-line bg-edu-paper-2"
+      />
     );
   }
 

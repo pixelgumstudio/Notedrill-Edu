@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -41,6 +41,13 @@ function OrgLoginPageInner() {
 
   const { loginAsOrg } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    if (searchParams.get("expired") === "1") {
+      setErrorMsg("Your session expired. Please log in again.");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <main className="flex min-h-screen items-center justify-center p-4 md:p-8">
@@ -106,8 +113,8 @@ function OrgLoginPageInner() {
           <VerifyStep
             email={prefillEmail}
             schoolId={prefillSchoolId}
-            onSuccess={(token) => {
-              loginAsOrg(token);
+            onSuccess={(accessToken, refreshToken) => {
+              loginAsOrg(accessToken, refreshToken);
               router.push("/edu/dashboard");
             }}
             onBack={() => setStep("request")}
@@ -267,7 +274,7 @@ function VerifyStep({
 }: {
   email: string;
   schoolId: string;
-  onSuccess: (token: string) => void;
+  onSuccess: (accessToken: string, refreshToken: string) => void;
   onBack: () => void;
   onError: (msg: string) => void;
 }) {
@@ -282,7 +289,7 @@ function VerifyStep({
 
   const mutation = useMutation({
     mutationFn: orgApi.verifyOtp,
-    onSuccess: (data) => onSuccess(data.tokens.accessToken),
+    onSuccess: (data) => onSuccess(data.tokens.accessToken, data.tokens.refreshToken),
     onError: (err: Error) => onError(err.message || "Invalid code. Please try again."),
   });
 

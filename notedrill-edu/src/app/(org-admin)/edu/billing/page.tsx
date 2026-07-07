@@ -4,6 +4,8 @@ import React, { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { orgApi } from "@/lib/org-api";
 import { useAuth } from "@/context/AuthContext";
+import EmptyState from "@/components/edu/EmptyState";
+import SectionEyebrow from "@/components/edu/SectionEyebrow";
 import type { OrgDashboardMetrics } from "@/types/edu";
 
 const STATUS_PILL: Record<
@@ -51,6 +53,7 @@ export default function BillingPage() {
     <>
       {/* Page top bar */}
       <div className="border-b border-edu-line bg-white px-6 py-5 md:px-8">
+        <SectionEyebrow className="mb-1">Getting started</SectionEyebrow>
         <h1 className="font-source-serif text-[22px] text-edu-moss-dark">Billing</h1>
         <p className="mt-0.5 text-sm text-edu-blue-grey">Manage your plan and payment</p>
       </div>
@@ -111,13 +114,12 @@ export default function BillingPage() {
             {/* Payment history */}
             <div className="rounded-xl border border-edu-line bg-white p-5 md:p-6" style={{ boxShadow: "var(--edu-shadow)" }}>
               <h3 className="mb-3.5 font-source-serif text-[15px] text-edu-moss-dark">Payment history</h3>
-              <div className="py-8 text-center text-edu-blue-grey">
-                <div className="mb-3 text-3xl opacity-60">🧾</div>
-                <h4 className="mb-1.5 text-[14.5px] font-semibold text-edu-ink">No payments yet</h4>
-                <p className="mx-auto max-w-[280px] text-sm">
-                  Once your first payment is confirmed, receipts and history will appear here.
-                </p>
-              </div>
+              <EmptyState
+                mark="₦"
+                heading="No payments yet"
+                body="Once your first payment is confirmed, receipts and history will appear here."
+                className="py-8"
+              />
             </div>
           </div>
 

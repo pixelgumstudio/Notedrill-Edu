@@ -78,7 +78,10 @@ export interface StudentFile {
   quizCount: number;
   flashcardSetCount: number;
   summaryTitle?: string;
+  /** Short generic tagline (e.g. "Study notes generated from pdf") — not the actual notes. */
   summary?: string;
+  /** The actual AI-generated study notes, as HTML. This is what students should read. */
+  content?: string;
 }
 
 export interface StudentQuizAttempt {
@@ -185,6 +188,7 @@ export interface AdminGeneratedQuiz {
   questions: AdminQuizQuestion[];
   totalQuestions: number;
   noteId: string;
+  createdAt?: string;
 }
 
 export interface AdminFlashcard {
@@ -201,4 +205,5 @@ export interface AdminGeneratedFlashcardSet {
   cards: AdminFlashcard[];
   totalCards: number;
   noteId?: string;
+  createdAt?: string;
 }

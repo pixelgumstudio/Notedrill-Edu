@@ -7,6 +7,8 @@ import ProgressSteps from "@/components/edu/ProgressSteps";
 import FlashcardViewer from "@/components/edu/FlashcardViewer";
 import QuizReviewer from "@/components/edu/QuizReviewer";
 import EduBackButton from "@/components/edu/EduBackButton";
+import EmptyState from "@/components/edu/EmptyState";
+import SectionEyebrow from "@/components/edu/SectionEyebrow";
 import { orgApi } from "@/lib/org-api";
 import { useAuth } from "@/context/AuthContext";
 import type {
@@ -74,8 +76,8 @@ function SourcePanel({ note }: { note: NoteDetail }) {
       );
     }
     return (
-      <EmptySource
-        icon="▶"
+      <EmptyState
+        mark="Y"
         heading="Video not available"
         body="The original YouTube video URL was not preserved. The AI summary is still available in the Summary tab."
       />
@@ -94,18 +96,17 @@ function SourcePanel({ note }: { note: NoteDetail }) {
     if (raw) {
       return (
         <div>
-          <div className="mb-3 flex items-center gap-2 rounded-lg border border-edu-line bg-edu-paper-2 px-4 py-2.5 text-xs text-edu-blue-grey">
-            <span>📄</span>
-            <span>The original PDF is stored privately. Showing the extracted text content below.</span>
+          <div className="mb-3 rounded-lg border border-edu-line bg-edu-paper-2 px-4 py-2.5 text-xs text-edu-blue-grey">
+            The original file is stored privately. Showing the extracted text content below.
           </div>
           <RawText text={raw} />
         </div>
       );
     }
     return (
-      <EmptySource
-        icon="📄"
-        heading="PDF not available"
+      <EmptyState
+        mark="P"
+        heading="File not available"
         body="The source file could not be loaded. The AI summary is still accessible in the Summary tab."
       />
     );
@@ -128,40 +129,46 @@ function SourcePanel({ note }: { note: NoteDetail }) {
     if (raw) {
       return (
         <div>
-          <div className="mb-3 flex items-center gap-2 rounded-lg border border-edu-line bg-edu-paper-2 px-4 py-2.5 text-xs text-edu-blue-grey">
-            <span>🖼</span>
-            <span>Image preview unavailable. Showing OCR-extracted text below.</span>
+          <div className="mb-3 rounded-lg border border-edu-line bg-edu-paper-2 px-4 py-2.5 text-xs text-edu-blue-grey">
+            Image preview unavailable. Showing OCR-extracted text below.
           </div>
           <RawText text={raw} />
         </div>
       );
     }
-    return <EmptySource icon="🖼" heading="Image not available" body="The source image could not be loaded." />;
+    return <EmptyState mark="I" heading="Image not available" body="The source image could not be loaded." />;
   }
 
   const raw = note.extractedContent || note.content || "";
   if (raw) return <RawText text={raw} />;
-  return <EmptySource icon="✎" heading="No source text" body="The original text content was not preserved." />;
+  return <EmptyState mark="T" heading="No source text" body="The original text content was not preserved." />;
 }
 
 function RawText({ text }: { text: string }) {
-  const plain = text.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim();
-  return (
-    <div
-      className="max-h-[66vh] overflow-y-auto rounded-xl border border-edu-line bg-edu-paper-2 p-5 font-mono text-[13px] leading-relaxed text-edu-ink"
-      style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
-    >
-      {plain}
-    </div>
-  );
-}
+  // Extracted text (PDF/OCR/doc parsing) carries a hard line break at the end
+  // of every visual line, not just at paragraph boundaries — collapsing every
+  // newline to a space (the old behavior) or keeping every one of them both
+  // produce unreadable output. Treat blank-line gaps as real paragraph
+  // breaks and reflow single line breaks within a paragraph back into prose.
+  const paragraphs = text
+    .replace(/<[^>]+>/g, " ")
+    .split(/\n\s*\n+/)
+    .map((block) => block.replace(/\s*\n\s*/g, " ").replace(/[ \t]{2,}/g, " ").trim())
+    .filter(Boolean);
 
-function EmptySource({ icon, heading, body }: { icon: string; heading: string; body: string }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-edu-line bg-edu-paper-2 py-16 text-center">
-      <span className="mb-3 text-4xl">{icon}</span>
-      <p className="mb-1 font-source-serif text-[15px] text-edu-moss-dark">{heading}</p>
-      <p className="max-w-xs text-sm text-edu-blue-grey">{body}</p>
+    <div className="max-h-[66vh] overflow-y-auto rounded-xl border border-edu-line bg-edu-paper-2 p-6">
+      {paragraphs.length > 0 ? (
+        <div className="space-y-4">
+          {paragraphs.map((p, i) => (
+            <p key={i} className="text-[14px] leading-relaxed text-edu-ink" style={{ wordBreak: "break-word" }}>
+              {p}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-edu-blue-grey">No readable text available.</p>
+      )}
     </div>
   );
 }
@@ -253,29 +260,27 @@ function AssessmentsPanel({
 
   if (localSets.length === 0) {
     return (
-      <div>
-        <div className="mb-5 flex flex-col items-center justify-center rounded-xl border border-dashed border-edu-line bg-edu-paper-2 py-12 text-center">
-          <span className="mb-3 text-4xl">🎓</span>
-          <h3 className="mb-1 font-source-serif text-[15px] text-edu-moss-dark">No assessments yet</h3>
-          <p className="mb-5 max-w-xs text-sm text-edu-blue-grey">
-            Generate your first quiz or flashcard deck to start reviewing content here.
-          </p>
-          <div className="flex flex-wrap justify-center gap-2.5">
-            <button
-              onClick={onGenerateQuiz}
-              className="flex items-center gap-2 rounded-lg bg-edu-moss px-4 py-2 text-sm font-bold text-white hover:bg-edu-moss-dark"
-            >
-              📝 Generate Quiz
-            </button>
-            <button
-              onClick={onGenerateFlash}
-              className="flex items-center gap-2 rounded-lg border border-edu-moss bg-white px-4 py-2 text-sm font-bold text-edu-moss-dark hover:bg-edu-moss-light"
-            >
-              🃏 Generate Flashcards
-            </button>
-          </div>
+      <EmptyState
+        mark="＋"
+        heading="No assessments yet"
+        body="Generate your first quiz or flashcard deck to start reviewing content here."
+        className="mb-5 rounded-xl border border-dashed border-edu-line bg-edu-paper-2"
+      >
+        <div className="mt-5 flex flex-wrap justify-center gap-2.5">
+          <button
+            onClick={onGenerateQuiz}
+            className="rounded-lg bg-edu-moss px-4 py-2 text-sm font-bold text-white hover:bg-edu-moss-dark"
+          >
+            Generate Quiz
+          </button>
+          <button
+            onClick={onGenerateFlash}
+            className="rounded-lg border border-edu-moss bg-white px-4 py-2 text-sm font-bold text-edu-moss-dark hover:bg-edu-moss-light"
+          >
+            Generate Flashcards
+          </button>
         </div>
-      </div>
+      </EmptyState>
     );
   }
 
@@ -294,7 +299,10 @@ function AssessmentsPanel({
                 : "border-edu-line bg-white text-edu-blue-grey hover:border-edu-moss hover:text-edu-ink",
             ].join(" ")}
           >
-            <span>{set.type === "quiz" ? "📝" : "🃏"}</span>
+            <span
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${set.type === "quiz" ? "bg-edu-moss" : "bg-edu-gold"}`}
+              aria-hidden="true"
+            />
             <span className="max-w-[140px] truncate">{set.title}</span>
             <span className="text-[11px] opacity-70">({set.questionCount})</span>
           </button>
@@ -377,14 +385,14 @@ function TabBar({
   onChange: (t: WorkspaceTab) => void;
   assessmentCount: number;
 }) {
-  const tabs: { id: WorkspaceTab; label: string; icon: string }[] = [
-    { id: "source",      label: "Original Source",   icon: "📂" },
-    { id: "summary",     label: "AI Summary",         icon: "✦"  },
-    { id: "assessments", label: "Assessments",        icon: "🎓" },
+  const tabs: { id: WorkspaceTab; label: string }[] = [
+    { id: "source",      label: "Original Source" },
+    { id: "summary",     label: "AI Summary" },
+    { id: "assessments", label: "Assessments" },
   ];
   return (
     <div className="mb-5 flex gap-1 rounded-xl border border-edu-line bg-edu-paper-2 p-1">
-      {tabs.map(({ id, label, icon }) => (
+      {tabs.map(({ id, label }) => (
         <button
           key={id}
           onClick={() => onChange(id)}
@@ -395,8 +403,7 @@ function TabBar({
               : "text-edu-blue-grey hover:text-edu-ink",
           ].join(" ")}
         >
-          <span className="text-base leading-none">{icon}</span>
-          <span className="hidden sm:inline">{label}</span>
+          <span>{label}</span>
           {id === "assessments" && assessmentCount > 0 && (
             <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-edu-moss px-1 text-[10px] font-bold text-white">
               {assessmentCount}
@@ -419,6 +426,22 @@ export default function FileWorkspacePage() {
   const { data: note, isLoading: noteLoading } = useQuery({
     queryKey: ["org-note", fileId],
     queryFn: () => orgApi.getNoteById(orgToken ?? "", fileId),
+    enabled: !!orgToken && !!fileId && fileId !== "undefined",
+    staleTime: 30_000,
+  });
+
+  // Previously-generated quizzes/flashcards for this note — restores the
+  // Assessments tab on revisit instead of showing empty local-only state.
+  const { data: existingQuizzes } = useQuery({
+    queryKey: ["org-note-quizzes", fileId],
+    queryFn: () => orgApi.getQuizzesByNote(orgToken ?? "", fileId),
+    enabled: !!orgToken && !!fileId && fileId !== "undefined",
+    staleTime: 30_000,
+  });
+
+  const { data: existingFlashcardSets } = useQuery({
+    queryKey: ["org-note-flashcards", fileId],
+    queryFn: () => orgApi.getFlashcardSetsByNote(orgToken ?? "", fileId),
     enabled: !!orgToken && !!fileId && fileId !== "undefined",
     staleTime: 30_000,
   });
@@ -447,6 +470,58 @@ export default function FileWorkspacePage() {
   function updateSetCards(setId: string, cards: AdminFlashcard[]) {
     setSetContents((prev) => ({ ...prev, [setId]: { ...prev[setId], type: "flashcards", cards } }));
   }
+
+  // ── Hydrate from previously-generated quizzes/flashcards on load ───────────
+  // Without this, localSets/setContents (populated only by generation mutations)
+  // reset to empty every time this page is revisited, even though the sets
+  // are still saved server-side.
+  useEffect(() => {
+    if (!existingQuizzes?.length) return;
+    setLocalSets((prev) => {
+      const seen = new Set(prev.map((s) => s.id));
+      const restored: GeneratedSet[] = existingQuizzes
+        .filter((q) => !seen.has(q._id))
+        .map((q) => ({
+          id: q._id,
+          type: "quiz",
+          title: q.title,
+          questionCount: q.questions.length,
+          generatedAt: formatDate(q.createdAt ?? new Date().toISOString()),
+        }));
+      return restored.length ? [...prev, ...restored] : prev;
+    });
+    setSetContents((prev) => {
+      const next = { ...prev };
+      for (const q of existingQuizzes) {
+        if (!next[q._id]) next[q._id] = { type: "quiz", questions: q.questions };
+      }
+      return next;
+    });
+  }, [existingQuizzes]);
+
+  useEffect(() => {
+    if (!existingFlashcardSets?.length) return;
+    setLocalSets((prev) => {
+      const seen = new Set(prev.map((s) => s.id));
+      const restored: GeneratedSet[] = existingFlashcardSets
+        .filter((s) => !seen.has(s._id))
+        .map((s) => ({
+          id: s._id,
+          type: "flashcards",
+          title: s.title,
+          questionCount: s.cards.length,
+          generatedAt: formatDate(s.createdAt ?? new Date().toISOString()),
+        }));
+      return restored.length ? [...prev, ...restored] : prev;
+    });
+    setSetContents((prev) => {
+      const next = { ...prev };
+      for (const s of existingFlashcardSets) {
+        if (!next[s._id]) next[s._id] = { type: "flashcards", cards: s.cards };
+      }
+      return next;
+    });
+  }, [existingFlashcardSets]);
 
   // ── Modal visibility ──────────────────────────────────────────────────────
   const [genQuizOpen, setGenQuizOpen]       = useState(false);
@@ -667,7 +742,7 @@ export default function FileWorkspacePage() {
 
         {/* Teacher badge */}
         <div className="mb-5 inline-flex items-center gap-1.5 rounded-lg bg-edu-gold-light px-3 py-1.5 text-[12px] font-bold text-[#8A5A18]">
-          🔒 Teacher workspace — you see all answers immediately. Students generate and take quizzes separately.
+          Teacher workspace — you see all answers immediately. Students generate and take quizzes separately.
         </div>
 
         <ProgressSteps steps={progressSteps} />
@@ -723,7 +798,7 @@ export default function FileWorkspacePage() {
             onClick={() => setGenQuizOpen(true)}
             disabled={!note || generateQuizMutation.isPending}
           >
-            <div className="mb-2 text-xl">📝</div>
+            <p className="mb-2 font-source-serif text-lg font-semibold text-edu-gold">01</p>
             <h4 className="mb-1 font-source-serif text-[14.5px] text-edu-moss-dark">Generate Quiz</h4>
             <p className="text-xs text-edu-blue-grey">
               Multiple-choice questions — all answers visible immediately for review and export.
@@ -735,7 +810,7 @@ export default function FileWorkspacePage() {
             onClick={() => setGenFlashOpen(true)}
             disabled={!note || generateFlashMutation.isPending}
           >
-            <div className="mb-2 text-xl">🗂</div>
+            <p className="mb-2 font-source-serif text-lg font-semibold text-edu-gold">02</p>
             <h4 className="mb-1 font-source-serif text-[14.5px] text-edu-moss-dark">Generate Flashcards</h4>
             <p className="text-xs text-edu-blue-grey">
               Question and answer pairs — front and back both visible for admin review and printing.
@@ -791,8 +866,16 @@ export default function FileWorkspacePage() {
                       className="cursor-pointer border-b border-edu-line last:border-b-0 transition-colors hover:bg-edu-paper-2"
                       onClick={() => {
                         setReviewSetTitle(set.title);
-                        if (set.type === "quiz") setQuizReviewOpen(true);
-                        else setFlashPreviewOpen(true);
+                        const content = setContents[set.id];
+                        if (set.type === "quiz") {
+                          setGeneratedQuestions(content?.questions ?? []);
+                          setActiveQuizId(set.id);
+                          setQuizReviewOpen(true);
+                        } else {
+                          setGeneratedCards(content?.cards ?? []);
+                          setActiveFlashId(set.id);
+                          setFlashPreviewOpen(true);
+                        }
                       }}
                     >
                       <td className="px-5 py-3.5 text-sm capitalize text-edu-ink">{set.type}</td>
@@ -826,19 +909,19 @@ export default function FileWorkspacePage() {
                                 className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-[13px] font-semibold text-edu-ink hover:bg-edu-paper-2"
                                 onClick={() => openExportForActive(true)}
                               >
-                                📄 Export questions &amp; answers
+                                Export questions &amp; answers
                               </button>
                               <button
                                 className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-[13px] font-semibold text-edu-ink hover:bg-edu-paper-2"
                                 onClick={() => openExportForActive(false)}
                               >
-                                📄 Export questions only
+                                Export questions only
                               </button>
                               <button
                                 className="flex w-full items-center gap-2 border-t border-edu-line px-3.5 py-2.5 text-left text-[13px] font-semibold text-edu-red hover:bg-edu-red-light"
                                 onClick={() => { setOpenMenuId(null); setDeleteOpen(set.id); }}
                               >
-                                🗑 Delete
+                                Delete
                               </button>
                             </div>
                           )}
@@ -925,7 +1008,7 @@ export default function FileWorkspacePage() {
                 {generatedQuestions.length} questions · review before exporting to print
               </p>
               <div className="mt-2.5 inline-flex items-center gap-1.5 rounded-md bg-edu-gold-light px-2.5 py-1 text-[11px] font-bold text-[#8A5A18]">
-                🔒 Admin view — correct answers highlighted.
+                Admin view — correct answers highlighted.
               </div>
             </div>
             <div className="flex-1 space-y-3 overflow-y-auto px-7 py-5">
@@ -984,22 +1067,22 @@ export default function FileWorkspacePage() {
               <h3 className="font-source-serif text-lg text-edu-ink">{reviewSetTitle}</h3>
               <p className="mt-0.5 text-sm text-edu-blue-grey">{generatedCards.length} cards</p>
               <div className="mt-2.5 inline-flex items-center gap-1.5 rounded-md bg-edu-gold-light px-2.5 py-1 text-[11px] font-bold text-[#8A5A18]">
-                🔒 Admin view — both sides shown.
+                Admin view — tap a card to flip and reveal the answer.
               </div>
             </div>
-            <div className="flex-1 space-y-3 overflow-y-auto px-7 py-5">
-              {generatedCards.map((card, idx) => (
-                <div key={idx} className="grid grid-cols-2 gap-0 overflow-hidden rounded-xl border border-edu-line">
-                  <div className="bg-edu-moss-light px-4 py-3.5">
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-edu-moss-dark">Front</p>
-                    <p className="text-sm font-semibold text-edu-moss-dark">{card.front}</p>
-                  </div>
-                  <div className="border-l border-edu-line px-4 py-3.5">
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-edu-blue-grey">Back</p>
-                    <p className="text-sm text-edu-ink">{card.back}</p>
-                  </div>
-                </div>
-              ))}
+            <div className="flex-1 overflow-y-auto px-7 py-5">
+              <FlashcardViewer
+                flashcardSetId={activeFlashId ?? ""}
+                cards={generatedCards}
+                onCardsChange={(updated) => {
+                  setGeneratedCards(updated);
+                  if (activeFlashId) updateSetCards(activeFlashId, updated);
+                }}
+                onSaveCard={async (setId, cardId, data) => {
+                  await orgApi.updateFlashcard(orgToken ?? "", setId, cardId, data);
+                }}
+                onToast={showToast}
+              />
             </div>
             <div className="flex gap-2.5 border-t border-edu-line px-7 py-5">
               <button className="flex-1 rounded-lg border-[1.5px] border-edu-line py-2.5 text-sm font-bold text-edu-blue-grey hover:bg-edu-paper-2" onClick={() => setFlashPreviewOpen(false)}>Close</button>

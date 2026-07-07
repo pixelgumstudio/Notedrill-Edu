@@ -3,6 +3,8 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import StudentsTable from "@/components/edu/StudentsTable";
+import EmptyState from "@/components/edu/EmptyState";
+import SectionEyebrow from "@/components/edu/SectionEyebrow";
 import { orgApi, type BulkStudentUploadResult } from "@/lib/org-api";
 import { useAuth } from "@/context/AuthContext";
 import type { OrgStudent } from "@/types/edu";
@@ -101,6 +103,7 @@ export default function StudentsPage() {
       {/* Page top bar */}
       <div className="flex items-start justify-between border-b border-edu-line bg-white px-6 py-5 md:px-8">
         <div>
+          <SectionEyebrow className="mb-1">Manage students</SectionEyebrow>
           <h1 className="font-source-serif text-[22px] text-edu-moss-dark">Students</h1>
           <p className="mt-0.5 text-sm text-edu-blue-grey">
             {isLoading ? "Loading…" : `${displayed.length} students`}
@@ -150,10 +153,15 @@ export default function StudentsPage() {
               ))}
             </div>
           ) : displayed.length === 0 ? (
-            <div className="py-16 text-center text-edu-blue-grey">
-              <div className="mb-3 text-3xl opacity-60">👤</div>
-              <p className="text-sm">No students found.</p>
-            </div>
+            <EmptyState
+              mark="S"
+              heading="No students found"
+              body={
+                activeFilter === "all"
+                  ? "Add your first student to get started — they'll sign in with a one-time code, no password needed."
+                  : "No students match this filter yet."
+              }
+            />
           ) : (
             <StudentsTable
               students={displayed}

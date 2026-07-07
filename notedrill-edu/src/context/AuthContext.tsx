@@ -8,6 +8,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import { useRouter } from "next/navigation";
 
 // ── JWT payload shape (mirrors api/src/utils/jwt.ts TokenPayload) ──────────────
 
@@ -35,9 +36,21 @@ function isExpired(payload: JwtPayload): boolean {
 }
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
+// Exported so org-api.ts's fetch layer can read/write the same localStorage
+// slots when silently refreshing an expired access token.
 
-const ORG_TOKEN_KEY = "edu_token";
-const STUDENT_TOKEN_KEY = "edu_student_token";
+export const ORG_TOKEN_KEY = "edu_token";
+export const STUDENT_TOKEN_KEY = "edu_student_token";
+export const ORG_REFRESH_TOKEN_KEY = "edu_refresh_token";
+export const STUDENT_REFRESH_TOKEN_KEY = "edu_student_refresh_token";
+
+// ── Cross-module events ─────────────────────────────────────────────────────
+// org-api.ts dispatches these on `window` after a silent token refresh
+// succeeds/fails, so this context (which owns the React state) can stay in
+// sync without importing React internals into a plain fetch module.
+
+export const TOKEN_REFRESHED_EVENT = "edu-token-refreshed";
+export const SESSION_EXPIRED_EVENT = "edu-session-expired";
 
 // ── Context value type ────────────────────────────────────────────────────────
 
@@ -63,10 +76,10 @@ export interface AuthContextValue {
   isSuperAdmin: boolean;
   /** True if either token is present and unexpired. */
   isAuthenticated: boolean;
-  /** Call after org admin OTP verify — stores the JWT. */
-  loginAsOrg: (token: string) => void;
-  /** Call after student OTP verify — stores the JWT. */
-  loginAsStudent: (token: string) => void;
+  /** Call after org admin OTP verify — stores the access + refresh JWTs. */
+  loginAsOrg: (accessToken: string, refreshToken: string) => void;
+  /** Call after student OTP verify — stores the access + refresh JWTs. */
+  loginAsStudent: (accessToken: string, refreshToken: string) => void;
   /** Clears both tokens from state and localStorage. */
   logout: () => void;
 }
@@ -84,6 +97,7 @@ export function useAuth(): AuthContextValue {
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
   const [isHydrated, setIsHydrated] = useState(false);
   const [orgToken, setOrgToken] = useState<string | null>(null);
   const [studentToken, setStudentToken] = useState<string | null>(null);
@@ -109,22 +123,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsHydrated(true);
   }, []);
 
-  const loginAsOrg = useCallback((token: string) => {
-    localStorage.setItem(ORG_TOKEN_KEY, token);
-    setOrgToken(token);
+  const loginAsOrg = useCallback((accessToken: string, refreshToken: string) => {
+    localStorage.setItem(ORG_TOKEN_KEY, accessToken);
+    localStorage.setItem(ORG_REFRESH_TOKEN_KEY, refreshToken);
+    setOrgToken(accessToken);
   }, []);
 
-  const loginAsStudent = useCallback((token: string) => {
-    localStorage.setItem(STUDENT_TOKEN_KEY, token);
-    setStudentToken(token);
+  const loginAsStudent = useCallback((accessToken: string, refreshToken: string) => {
+    localStorage.setItem(STUDENT_TOKEN_KEY, accessToken);
+    localStorage.setItem(STUDENT_REFRESH_TOKEN_KEY, refreshToken);
+    setStudentToken(accessToken);
   }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem(ORG_TOKEN_KEY);
     localStorage.removeItem(STUDENT_TOKEN_KEY);
+    localStorage.removeItem(ORG_REFRESH_TOKEN_KEY);
+    localStorage.removeItem(STUDENT_REFRESH_TOKEN_KEY);
     setOrgToken(null);
     setStudentToken(null);
   }, []);
+
+  // ── Stay in sync with silent token refreshes/expirations from org-api.ts ───
+  // The fetch layer owns the actual refresh call (and localStorage writes for
+  // the new tokens); this just mirrors the result into React state and, on
+  // expiry, sends the user back to the right login screen.
+  useEffect(() => {
+    function onRefreshed(e: Event) {
+      const { kind, accessToken } = (e as CustomEvent<{ kind: "org" | "student"; accessToken: string }>).detail;
+      if (kind === "org") setOrgToken(accessToken);
+      else setStudentToken(accessToken);
+    }
+    function onExpired(e: Event) {
+      const { kind } = (e as CustomEvent<{ kind: "org" | "student" }>).detail;
+      if (kind === "org") {
+        setOrgToken(null);
+        router.push("/org/login?expired=1");
+      } else {
+        setStudentToken(null);
+        router.push("/student/login?expired=1");
+      }
+    }
+    window.addEventListener(TOKEN_REFRESHED_EVENT, onRefreshed);
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => {
+      window.removeEventListener(TOKEN_REFRESHED_EVENT, onRefreshed);
+      window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    };
+  }, [router]);
 
   // Derive identity from whichever token is present (org admin takes precedence)
   const activePayload: JwtPayload = orgToken

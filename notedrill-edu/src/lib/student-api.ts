@@ -41,6 +41,7 @@ interface RawNote {
   sourceType?: string;
   type?: string;
   summary?: string;
+  content?: string;
   createdAt: string;
   orgId?: string;
 }
@@ -90,6 +91,7 @@ function mapNote(n: RawNote): StudentFile {
     quizCount: 0,
     flashcardSetCount: 0,
     summary: n.summary,
+    content: n.content,
     summaryTitle: n.title,
   };
 }

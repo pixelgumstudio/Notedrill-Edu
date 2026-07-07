@@ -1,4 +1,5 @@
 import React from "react";
+import FileTypeBadge from "./FileTypeBadge";
 
 interface FileCardProps {
   title: string;
@@ -7,13 +8,6 @@ interface FileCardProps {
   visible?: boolean;
   onClick?: () => void;
 }
-
-const typeIcon: Record<string, string> = {
-  pdf: "📄",
-  youtube: "▶",
-  text: "✎",
-  image: "🖼",
-};
 
 export default function FileCard({
   title,
@@ -28,9 +22,7 @@ export default function FileCard({
       onClick={onClick}
       style={{ boxShadow: "var(--edu-shadow)" }}
     >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-edu-moss-light text-lg text-edu-moss-dark">
-        {typeIcon[type] ?? "📄"}
-      </div>
+      <FileTypeBadge type={type} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-bold text-edu-ink">{title}</div>
         <div className="mt-0.5 text-xs text-edu-blue-grey">{subtitle}</div>

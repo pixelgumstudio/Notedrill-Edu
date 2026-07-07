@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import UploadZone from "@/components/edu/UploadZone";
 import FileCard from "@/components/edu/FileCard";
+import SectionEyebrow from "@/components/edu/SectionEyebrow";
 import { orgApi } from "@/lib/org-api";
 import { useAuth } from "@/context/AuthContext";
 import type { NoteDetail } from "@/types/edu";
@@ -128,6 +129,15 @@ export default function UploadPage() {
       showToast("Please select a file first.");
       return;
     }
+    const SUPPORTED_DOC_TYPES = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+    if (source === "pdf" && file && !SUPPORTED_DOC_TYPES.includes(file.type)) {
+      showToast("Unsupported file type. Please upload a PDF, DOC, or DOCX file.");
+      return;
+    }
     if ((source === "text" || source === "youtube") && !text?.trim()) {
       showToast(source === "youtube" ? "Please enter a YouTube URL." : "Please enter some text content.");
       return;
@@ -141,6 +151,7 @@ export default function UploadPage() {
     <>
       {/* Page top bar */}
       <div className="border-b border-edu-line bg-white px-6 py-5 md:px-8">
+        <SectionEyebrow className="mb-1">The solution</SectionEyebrow>
         <h1 className="font-source-serif text-[22px] text-edu-moss-dark">Files &amp; content</h1>
         <p className="mt-0.5 text-sm text-edu-blue-grey">
           Upload material once — every student in your school can practice with it

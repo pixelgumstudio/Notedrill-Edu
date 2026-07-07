@@ -116,7 +116,8 @@ export default function FileDetailPage() {
           ) : (
             <SummaryBox
               title={file?.summaryTitle ?? file?.title ?? "Summary"}
-              body={file?.summary ?? "Summary not yet generated for this file."}
+              body={file?.content || file?.summary || "Summary not yet generated for this file."}
+              bodyIsHtml={!!file?.content}
               stats={[
                 { label: "Quizzes taken", value: quizHistory.length },
                 { label: "Best score", value: bestScore > 0 ? `${bestScore}%` : "—" },

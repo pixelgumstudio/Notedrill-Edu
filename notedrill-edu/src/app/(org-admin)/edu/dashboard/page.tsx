@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import MetricCard from "@/components/edu/MetricCard";
 import StudentsTable from "@/components/edu/StudentsTable";
+import SectionEyebrow from "@/components/edu/SectionEyebrow";
+import EmptyState from "@/components/edu/EmptyState";
 import { orgApi } from "@/lib/org-api";
 import { useAuth } from "@/context/AuthContext";
 import type { OrgStudent, OrgDashboardMetrics } from "@/types/edu";
@@ -63,6 +65,7 @@ export default function DashboardPage() {
       {/* Page top bar */}
       <div className="flex items-start justify-between border-b border-edu-line bg-white px-6 py-5 md:px-8">
         <div>
+          <SectionEyebrow className="mb-1">For school management</SectionEyebrow>
           <h1 className="font-source-serif text-[22px] text-edu-moss-dark">Dashboard</h1>
           <p className="mt-0.5 text-sm text-edu-blue-grey">Overview of your school&apos;s NoteDrill activity</p>
           {m?.schoolId && (
@@ -115,6 +118,45 @@ export default function DashboardPage() {
           </div>
         ) : null}
 
+        {/* Getting started — shown until the school has added its first student */}
+        {!studentsLoading && s.length === 0 && (
+          <div
+            className="mb-7 overflow-hidden rounded-xl border border-edu-line bg-white p-6 md:p-7"
+            style={{ boxShadow: "var(--edu-shadow)" }}
+          >
+            <SectionEyebrow className="mb-2">Getting started</SectionEyebrow>
+            <h3 className="mb-5 font-source-serif text-[18px] text-edu-moss-dark">
+              Two steps from your first exam paper.
+            </h3>
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <div className="flex gap-3.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-edu-moss text-sm font-bold text-white">1</div>
+                <div>
+                  <p className="mb-0.5 text-sm font-bold text-edu-ink">Add your students</p>
+                  <p className="text-[13px] leading-relaxed text-edu-blue-grey">
+                    They&apos;ll sign in with a one-time code sent by email — no password, no app download.
+                  </p>
+                  <Link href="/edu/students" className="mt-2 inline-block text-[13px] font-bold text-edu-moss hover:underline">
+                    Add students →
+                  </Link>
+                </div>
+              </div>
+              <div className="flex gap-3.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-edu-moss text-sm font-bold text-white">2</div>
+                <div>
+                  <p className="mb-0.5 text-sm font-bold text-edu-ink">Upload your first lesson material</p>
+                  <p className="text-[13px] leading-relaxed text-edu-blue-grey">
+                    One PDF is all you need — Notedrill generates a summary, quiz, and flashcards from it.
+                  </p>
+                  <Link href="/edu/upload" className="mt-2 inline-block text-[13px] font-bold text-edu-moss hover:underline">
+                    Upload a file →
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Students preview panel */}
         <div className="overflow-hidden rounded-[var(--edu-radius)] border border-edu-line bg-white" style={{ boxShadow: "var(--edu-shadow)" }}>
           <div className="flex items-center justify-between border-b border-edu-line px-5 py-4">
@@ -137,6 +179,13 @@ export default function DashboardPage() {
                 <div key={i} className="h-12 animate-pulse rounded bg-edu-line" />
               ))}
             </div>
+          ) : s.length === 0 ? (
+            <EmptyState
+              mark="S"
+              heading="No students yet"
+              body="Add your first student above to see them appear here."
+              className="py-10"
+            />
           ) : (
             <StudentsTable students={s.slice(0, 6)} showActions={false} />
           )}

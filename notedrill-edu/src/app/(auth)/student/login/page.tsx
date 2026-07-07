@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
@@ -16,6 +16,15 @@ import Toast from "@/components/edu/Toast";
 type Step = "request" | "verify";
 
 export default function StudentLoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <StudentLoginPageInner />
+    </Suspense>
+  );
+}
+
+function StudentLoginPageInner() {
+  const searchParams = useSearchParams();
   const [step, setStep] = useState<Step>("request");
   const [prefillEmail, setPrefillEmail] = useState("");
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -23,6 +32,13 @@ export default function StudentLoginPage() {
 
   const { loginAsStudent } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    if (searchParams.get("expired") === "1") {
+      setErrorMsg("Your session expired. Please log in again.");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <main className="flex min-h-screen items-center justify-center p-4 md:p-8">
@@ -74,8 +90,8 @@ export default function StudentLoginPage() {
         ) : (
           <VerifyStep
             email={prefillEmail}
-            onSuccess={(token) => {
-              loginAsStudent(token);
+            onSuccess={(accessToken, refreshToken) => {
+              loginAsStudent(accessToken, refreshToken);
               router.push("/learn/files");
             }}
             onBack={() => setStep("request")}
@@ -150,7 +166,7 @@ function VerifyStep({
   onError,
 }: {
   email: string;
-  onSuccess: (token: string) => void;
+  onSuccess: (accessToken: string, refreshToken: string) => void;
   onBack: () => void;
   onError: (msg: string) => void;
 }) {
@@ -166,7 +182,7 @@ function VerifyStep({
   const mutation = useMutation({
     mutationFn: (data: VerifyLoginOTPInput) =>
       orgApi.studentVerifyOtp({ email: data.email, otp: data.otp }),
-    onSuccess: (data) => onSuccess(data.tokens.accessToken),
+    onSuccess: (data) => onSuccess(data.tokens.accessToken, data.tokens.refreshToken),
     onError: (err: Error) => onError(err.message || "Invalid code. Please try again."),
   });
 

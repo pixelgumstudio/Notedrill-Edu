@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import type { AdminQuizQuestion } from "@/types/edu";
+import EmptyState from "./EmptyState";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -125,10 +126,12 @@ export default function QuizReviewer({
 
   if (questions.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-edu-line bg-edu-paper-2 py-12 text-center">
-        <span className="mb-2 text-4xl">📝</span>
-        <p className="text-sm text-edu-blue-grey">No questions in this quiz yet.</p>
-      </div>
+      <EmptyState
+        mark="Q"
+        heading="No questions in this quiz"
+        body="This quiz doesn't have any questions yet."
+        className="rounded-xl border border-edu-line bg-edu-paper-2"
+      />
     );
   }
 
