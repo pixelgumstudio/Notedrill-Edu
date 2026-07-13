@@ -19,4 +19,7 @@ jobs:
           script: |
             cd /root/notedrill-edu
             git pull origin main
-            docker compose -f docker-compose.prod.yml up -d --build
+            npm install
+            npm run build --workspace=@notedrill/types --workspace=@notedrill/shared --workspace=@notedrill/validation
+            npm run build --workspace=notedrill-edu
+            pm2 restart notedrill-edu-web
