@@ -28,9 +28,9 @@ const ibmPlexMono = IBM_Plex_Mono({
 
 function StudentLayoutInner({ children }: { children: React.ReactNode }) {
   const { toggleMobileSidebar } = useSidebar();
-  const { username, email } = useAuth();
+  const { name, email } = useAuth();
 
-  const displayName = username || email || "Student";
+  const displayName = name || email || "Student";
 
   return (
     <div

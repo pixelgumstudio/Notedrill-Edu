@@ -12,6 +12,7 @@ interface StudentsTableProps {
   baseHref?: string;
   showActions?: boolean;
   onStudentRemoved?: (id: string) => void;
+  onResetAccess?: (id: string) => void;
 }
 
 export default function StudentsTable({
@@ -19,25 +20,19 @@ export default function StudentsTable({
   baseHref = "/edu/students",
   showActions = true,
   onStudentRemoved,
+  onResetAccess,
 }: StudentsTableProps) {
   const [resetTarget, setResetTarget] = useState<OrgStudent | null>(null);
   const [removeTarget, setRemoveTarget] = useState<OrgStudent | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2600);
-  };
 
   const handleReset = () => {
+    if (resetTarget && onResetAccess) onResetAccess(resetTarget.id);
     setResetTarget(null);
-    showToast("Access reset — student can request a new code");
   };
 
   const handleRemove = () => {
     if (removeTarget && onStudentRemoved) onStudentRemoved(removeTarget.id);
     setRemoveTarget(null);
-    showToast("Student removed");
   };
 
   const lastActiveLabel = (val: string | null) => {
@@ -94,12 +89,12 @@ export default function StudentsTable({
                   {student.email}
                 </td>
               )}
-              <td className="px-5 py-3.5 text-sm text-edu-ink">{student.quizCount}</td>
+              <td className="px-5 py-3.5 text-sm text-edu-ink">{student.quizzesTaken}</td>
               <td className="px-5 py-3.5">
-                <ScorePill score={student.avgScore} />
+                <ScorePill score={student.averageScore} />
               </td>
               <td className="hidden px-5 py-3.5 text-sm text-edu-ink lg:table-cell">
-                {student.flashcardCount}
+                {student.flashcardSessions}
               </td>
               <td className="hidden px-5 py-3.5 text-sm text-edu-blue-grey sm:table-cell">
                 {lastActiveLabel(student.lastActive)}
@@ -139,7 +134,7 @@ export default function StudentsTable({
         open={!!resetTarget}
         onClose={() => setResetTarget(null)}
         title="Reset student access"
-        description={`This cancels any pending login code for ${resetTarget?.name}. They can request a new one the next time they try to log in.`}
+        description={`This signs ${resetTarget?.name} out of every device. They'll need to request a new one-time code to log back in.`}
       >
         <div className="flex gap-2.5">
           <button
@@ -179,16 +174,6 @@ export default function StudentsTable({
           </button>
         </div>
       </EduModal>
-
-      {/* Toast */}
-      {toast && (
-        <div
-          className="fixed bottom-6 right-6 z-[2000] flex items-center gap-2.5 rounded-xl bg-edu-moss-dark px-5 py-3.5 text-sm font-semibold text-white"
-          style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.25)" }}
-        >
-          {toast}
-        </div>
-      )}
     </div>
   );
 }

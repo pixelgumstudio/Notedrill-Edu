@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ProgressSteps from "@/components/edu/ProgressSteps";
@@ -8,23 +8,18 @@ import FlashcardViewer from "@/components/edu/FlashcardViewer";
 import QuizReviewer from "@/components/edu/QuizReviewer";
 import EduBackButton from "@/components/edu/EduBackButton";
 import EmptyState from "@/components/edu/EmptyState";
-import SectionEyebrow from "@/components/edu/SectionEyebrow";
+import ActionMenu from "@/components/edu/ActionMenu";
+import SourceViewer from "@/components/edu/SourceViewer";
 import { orgApi } from "@/lib/org-api";
 import { useAuth } from "@/context/AuthContext";
 import type {
-  NoteDetail,
-  GeneratedSet,
+  OrgNoteDetail,
+  OrgGeneratedSetSummary,
   AdminQuizQuestion,
   AdminFlashcard,
 } from "@/types/edu";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-
-function letterToIndex(letter: unknown): number {
-  if (typeof letter === "number") return letter;
-  if (typeof letter !== "string" || !letter) return -1;
-  return "ABCD".indexOf(letter.toUpperCase());
-}
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -34,152 +29,21 @@ function formatDate(iso: string): string {
   });
 }
 
-function resolveYouTubeId(note: NoteDetail): string | null {
-  if (note.metadata?.youtubeVideoId) return note.metadata.youtubeVideoId;
-  const candidate = note.extractedContent || "";
-  const match = candidate.match(
-    /(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/
-  );
-  return match?.[1] ?? null;
-}
-
-function isHttpUrl(s?: string): s is string {
-  return !!s && (s.startsWith("http://") || s.startsWith("https://"));
+/** Display title for a set — the backend doesn't return one, so we synthesize it. */
+function setTitle(type: "quiz" | "flashcardSet", count: number): string {
+  return type === "quiz" ? `Quiz (${count} question${count === 1 ? "" : "s"})` : `Flashcards (${count} card${count === 1 ? "" : "s"})`;
 }
 
 // ── Content-by-set tracking ───────────────────────────────────────────────────
 
-interface SetContent {
-  type: "quiz" | "flashcards";
-  questions?: AdminQuizQuestion[];
-  cards?: AdminFlashcard[];
-}
-
-// ── Source viewer ─────────────────────────────────────────────────────────────
-
-function SourcePanel({ note }: { note: NoteDetail }) {
-  const srcType = note.sourceType || note.type;
-
-  if (srcType === "youtube") {
-    const videoId = resolveYouTubeId(note);
-    if (videoId) {
-      return (
-        <div className="overflow-hidden rounded-xl border border-edu-line" style={{ aspectRatio: "16/9" }}>
-          <iframe
-            className="h-full w-full"
-            src={`https://www.youtube.com/embed/${videoId}`}
-            title={note.title}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-          />
-        </div>
-      );
-    }
-    return (
-      <EmptyState
-        mark="Y"
-        heading="Video not available"
-        body="The original YouTube video URL was not preserved. The AI summary is still available in the Summary tab."
-      />
-    );
-  }
-
-  if (srcType === "pdf") {
-    if (isHttpUrl(note.sourceFileUrl)) {
-      return (
-        <div className="overflow-hidden rounded-xl border border-edu-line" style={{ height: "72vh" }}>
-          <iframe className="h-full w-full" src={note.sourceFileUrl} title={note.title} />
-        </div>
-      );
-    }
-    const raw = note.extractedContent || note.content || "";
-    if (raw) {
-      return (
-        <div>
-          <div className="mb-3 rounded-lg border border-edu-line bg-edu-paper-2 px-4 py-2.5 text-xs text-edu-blue-grey">
-            The original file is stored privately. Showing the extracted text content below.
-          </div>
-          <RawText text={raw} />
-        </div>
-      );
-    }
-    return (
-      <EmptyState
-        mark="P"
-        heading="File not available"
-        body="The source file could not be loaded. The AI summary is still accessible in the Summary tab."
-      />
-    );
-  }
-
-  if (srcType === "image") {
-    if (isHttpUrl(note.sourceFileUrl)) {
-      return (
-        <div className="overflow-hidden rounded-xl border border-edu-line">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={note.sourceFileUrl}
-            alt={note.title}
-            className="mx-auto max-h-[70vh] object-contain"
-          />
-        </div>
-      );
-    }
-    const raw = note.extractedContent || note.content || "";
-    if (raw) {
-      return (
-        <div>
-          <div className="mb-3 rounded-lg border border-edu-line bg-edu-paper-2 px-4 py-2.5 text-xs text-edu-blue-grey">
-            Image preview unavailable. Showing OCR-extracted text below.
-          </div>
-          <RawText text={raw} />
-        </div>
-      );
-    }
-    return <EmptyState mark="I" heading="Image not available" body="The source image could not be loaded." />;
-  }
-
-  const raw = note.extractedContent || note.content || "";
-  if (raw) return <RawText text={raw} />;
-  return <EmptyState mark="T" heading="No source text" body="The original text content was not preserved." />;
-}
-
-function RawText({ text }: { text: string }) {
-  // Extracted text (PDF/OCR/doc parsing) carries a hard line break at the end
-  // of every visual line, not just at paragraph boundaries — collapsing every
-  // newline to a space (the old behavior) or keeping every one of them both
-  // produce unreadable output. Treat blank-line gaps as real paragraph
-  // breaks and reflow single line breaks within a paragraph back into prose.
-  const paragraphs = text
-    .replace(/<[^>]+>/g, " ")
-    .split(/\n\s*\n+/)
-    .map((block) => block.replace(/\s*\n\s*/g, " ").replace(/[ \t]{2,}/g, " ").trim())
-    .filter(Boolean);
-
-  return (
-    <div className="max-h-[66vh] overflow-y-auto rounded-xl border border-edu-line bg-edu-paper-2 p-6">
-      {paragraphs.length > 0 ? (
-        <div className="space-y-4">
-          {paragraphs.map((p, i) => (
-            <p key={i} className="text-[14px] leading-relaxed text-edu-ink" style={{ wordBreak: "break-word" }}>
-              {p}
-            </p>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-edu-blue-grey">No readable text available.</p>
-      )}
-    </div>
-  );
-}
+type SetContent =
+  | { type: "quiz"; questions: AdminQuizQuestion[] }
+  | { type: "flashcardSet"; cards: AdminFlashcard[] };
 
 // ── AI Summary viewer ─────────────────────────────────────────────────────────
 
-function SummaryPanel({ note }: { note: NoteDetail }) {
-  const hasSummary = !!note.summary?.trim();
-  const hasContent = !!note.content?.trim();
-
-  if (!hasSummary && !hasContent) {
+function SummaryPanel({ note }: { note: OrgNoteDetail }) {
+  if (!note.summary?.trim()) {
     return (
       <div className="rounded-xl border border-edu-line bg-edu-paper-2 px-6 py-10 text-center text-sm text-edu-blue-grey">
         The AI summary is still being generated. Refresh in a moment.
@@ -188,26 +52,9 @@ function SummaryPanel({ note }: { note: NoteDetail }) {
   }
 
   return (
-    <div className="space-y-5">
-      {hasSummary && (
-        <div className="rounded-xl border border-edu-moss/30 bg-edu-moss-light px-5 py-4">
-          <p className="mb-1.5 text-[10.5px] font-bold uppercase tracking-widest text-edu-moss">AI Summary</p>
-          <p className="text-[14.5px] leading-relaxed text-edu-moss-dark">{note.summary}</p>
-        </div>
-      )}
-      {hasContent && (
-        <div
-          className={[
-            "prose prose-sm max-w-none rounded-xl border border-edu-line bg-white px-6 py-5",
-            "prose-headings:font-source-serif prose-headings:text-edu-moss-dark",
-            "prose-p:text-edu-ink prose-p:leading-relaxed",
-            "prose-strong:text-edu-ink prose-li:text-edu-ink prose-li:leading-relaxed",
-            "prose-h2:text-[15px] prose-h3:text-[13.5px] prose-ul:my-2 prose-ol:my-2",
-          ].join(" ")}
-          // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: note.content ?? "" }}
-        />
-      )}
+    <div className="rounded-xl border border-edu-moss/30 bg-edu-moss-light px-5 py-4">
+      <p className="mb-1.5 text-[10.5px] font-bold uppercase tracking-widest text-edu-moss">AI Summary</p>
+      <p className="whitespace-pre-line text-[14.5px] leading-relaxed text-edu-moss-dark">{note.summary}</p>
     </div>
   );
 }
@@ -215,48 +62,38 @@ function SummaryPanel({ note }: { note: NoteDetail }) {
 // ── Assessments panel ─────────────────────────────────────────────────────────
 
 interface AssessmentsPanelProps {
-  noteId: string;
-  orgToken: string;
-  localSets: GeneratedSet[];
-  setContents: Record<string, SetContent>;
+  localSets: OrgGeneratedSetSummary[];
+  selectedSetId: string | null;
+  onSelectSet: (id: string) => void;
+  content: SetContent | null | undefined;
+  contentLoading: boolean;
   onQuestionsChange: (setId: string, questions: AdminQuizQuestion[]) => void;
   onCardsChange: (setId: string, cards: AdminFlashcard[]) => void;
   onGenerateQuiz: () => void;
   onGenerateFlash: () => void;
-  onGenerateMore: (type: "quiz" | "flashcards", setId: string | null) => void;
-  isGeneratingMore: boolean;
   onToast: (msg: string) => void;
 }
 
 function AssessmentsPanel({
-  noteId,
-  orgToken,
   localSets,
-  setContents,
+  selectedSetId,
+  onSelectSet,
+  content,
+  contentLoading,
   onQuestionsChange,
   onCardsChange,
   onGenerateQuiz,
   onGenerateFlash,
-  onGenerateMore,
-  isGeneratingMore,
   onToast,
 }: AssessmentsPanelProps) {
-  const [selectedSetId, setSelectedSetId] = useState<string | null>(
-    localSets[0]?.id ?? null
-  );
-
-  // Keep selection in sync when a new set is added
-  const latestId = localSets[0]?.id ?? null;
-  const prevLatestRef = useRef(latestId);
-  useEffect(() => {
-    if (latestId && latestId !== prevLatestRef.current) {
-      setSelectedSetId(latestId);
-      prevLatestRef.current = latestId;
-    }
-  }, [latestId]);
+  const [setQuery, setSetQuery] = useState("");
 
   const selectedSet = localSets.find((s) => s.id === selectedSetId) ?? null;
-  const content = selectedSetId ? setContents[selectedSetId] : null;
+
+  const SEARCH_THRESHOLD = 6;
+  const filteredSets = setQuery.trim()
+    ? localSets.filter((s) => setTitle(s.type, s.questionCount).toLowerCase().includes(setQuery.trim().toLowerCase()))
+    : localSets;
 
   if (localSets.length === 0) {
     return (
@@ -287,13 +124,25 @@ function AssessmentsPanel({
   return (
     <div>
       {/* ── Set selector ──────────────────────────────────────────────────── */}
-      <div className="mb-4 flex flex-wrap gap-2">
-        {localSets.map((set) => (
+      {localSets.length > SEARCH_THRESHOLD && (
+        <div className="relative mb-2.5">
+          <input
+            type="text"
+            value={setQuery}
+            onChange={(e) => setSetQuery(e.target.value)}
+            placeholder={`Search ${localSets.length} sets…`}
+            className="w-full max-w-xs rounded-lg border-[1.5px] border-edu-line bg-white py-1.5 pl-8 pr-3 text-[12.5px] focus:border-edu-moss focus:outline-none"
+          />
+          <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[12px] text-edu-blue-grey">⌕</span>
+        </div>
+      )}
+      <div className="mb-4 flex snap-x gap-2 overflow-x-auto pb-1.5" style={{ scrollbarWidth: "thin" }}>
+        {filteredSets.map((set) => (
           <button
             key={set.id}
-            onClick={() => setSelectedSetId(set.id)}
+            onClick={() => onSelectSet(set.id)}
             className={[
-              "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] font-semibold transition-colors",
+              "flex shrink-0 snap-start items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] font-semibold transition-colors",
               selectedSetId === set.id
                 ? "border-edu-moss bg-edu-moss-light text-edu-moss-dark"
                 : "border-edu-line bg-white text-edu-blue-grey hover:border-edu-moss hover:text-edu-ink",
@@ -303,66 +152,35 @@ function AssessmentsPanel({
               className={`h-1.5 w-1.5 shrink-0 rounded-full ${set.type === "quiz" ? "bg-edu-moss" : "bg-edu-gold"}`}
               aria-hidden="true"
             />
-            <span className="max-w-[140px] truncate">{set.title}</span>
-            <span className="text-[11px] opacity-70">({set.questionCount})</span>
+            <span className="max-w-[160px] truncate">{setTitle(set.type, set.questionCount)}</span>
           </button>
         ))}
+        {filteredSets.length === 0 && (
+          <p className="shrink-0 py-1.5 text-[12.5px] text-edu-blue-grey">No sets match &quot;{setQuery}&quot;.</p>
+        )}
       </div>
 
       {/* ── Viewer ────────────────────────────────────────────────────────── */}
-      {selectedSet && content ? (
-        <div>
-          {content.type === "flashcards" && content.cards ? (
-            <FlashcardViewer
-              flashcardSetId={selectedSet.id}
-              cards={content.cards}
-              onCardsChange={(updated) => onCardsChange(selectedSet.id, updated)}
-              onSaveCard={async (setId, cardId, data) => {
-                await orgApi.updateFlashcard(orgToken, setId, cardId, data);
-              }}
-              onToast={onToast}
-            />
-          ) : content.type === "quiz" && content.questions ? (
-            <QuizReviewer
-              quizId={selectedSet.id}
-              questions={content.questions}
-              onQuestionsChange={(updated) => onQuestionsChange(selectedSet.id, updated)}
-              onSaveQuestion={async (quizId, qIdx, data) => {
-                await orgApi.updateQuizQuestion(orgToken, quizId, qIdx, data);
-              }}
-              onToast={onToast}
-            />
-          ) : (
-            <div className="rounded-xl border border-edu-line bg-edu-paper-2 py-10 text-center text-sm text-edu-blue-grey">
-              Content unavailable — please re-generate this set.
-            </div>
-          )}
-
-          {/* ── Generate More ────────────────────────────────────────────── */}
-          <div className="mt-5 flex flex-wrap items-center gap-2.5 rounded-xl border border-edu-line bg-edu-paper-2 px-4 py-3.5">
-            <p className="flex-1 text-[12.5px] font-semibold text-edu-ink">
-              {content.type === "quiz"
-                ? `${content.questions?.length ?? 0} questions in this quiz`
-                : `${content.cards?.length ?? 0} cards in this deck`}
-            </p>
-            <button
-              disabled={isGeneratingMore}
-              onClick={() => onGenerateMore(content.type, selectedSetId)}
-              className="flex items-center gap-1.5 rounded-lg border border-edu-moss bg-white px-3.5 py-1.5 text-[12.5px] font-bold text-edu-moss-dark transition-colors hover:bg-edu-moss-light disabled:opacity-50"
-            >
-              {isGeneratingMore ? (
-                <>
-                  <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-edu-moss border-t-transparent" />
-                  Generating…
-                </>
-              ) : (
-                <>
-                  ＋ Generate {content.type === "quiz" ? "more questions" : "more cards"}
-                </>
-              )}
-            </button>
-          </div>
+      {contentLoading ? (
+        <div className="space-y-2 rounded-xl border border-edu-line bg-white p-5">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-10 animate-pulse rounded bg-edu-line" />
+          ))}
         </div>
+      ) : selectedSet && content ? (
+        content.type === "flashcardSet" ? (
+          <FlashcardViewer
+            cards={content.cards}
+            onCardsChange={(updated) => onCardsChange(selectedSet.id, updated)}
+            onToast={onToast}
+          />
+        ) : (
+          <QuizReviewer
+            questions={content.questions}
+            onQuestionsChange={(updated) => onQuestionsChange(selectedSet.id, updated)}
+            onToast={onToast}
+          />
+        )
       ) : (
         <div className="rounded-xl border border-edu-line bg-edu-paper-2 py-10 text-center text-sm text-edu-blue-grey">
           Select a set above to start reviewing.
@@ -430,21 +248,20 @@ export default function FileWorkspacePage() {
     staleTime: 30_000,
   });
 
-  // Previously-generated quizzes/flashcards for this note — restores the
-  // Assessments tab on revisit instead of showing empty local-only state.
-  const { data: existingQuizzes } = useQuery({
-    queryKey: ["org-note-quizzes", fileId],
-    queryFn: () => orgApi.getQuizzesByNote(orgToken ?? "", fileId),
+  const { data: sets = [] } = useQuery({
+    queryKey: ["org-note-sets", fileId],
+    queryFn: () => orgApi.getQuizzesAndFlashcards(orgToken ?? "", fileId),
     enabled: !!orgToken && !!fileId && fileId !== "undefined",
     staleTime: 30_000,
   });
 
-  const { data: existingFlashcardSets } = useQuery({
-    queryKey: ["org-note-flashcards", fileId],
-    queryFn: () => orgApi.getFlashcardSetsByNote(orgToken ?? "", fileId),
-    enabled: !!orgToken && !!fileId && fileId !== "undefined",
-    staleTime: 30_000,
-  });
+  // Sets generated in this session (not yet reflected by a refetch of `sets`)
+  const [localOnlySets, setLocalOnlySets] = useState<OrgGeneratedSetSummary[]>([]);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+
+  const allSets = [...localOnlySets, ...sets.filter((s) => !localOnlySets.some((l) => l.id === s.id))].filter(
+    (s) => !deletedIds.has(s.id),
+  );
 
   // ── Tab state ─────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("summary");
@@ -456,197 +273,117 @@ export default function FileWorkspacePage() {
     setTimeout(() => setToast(null), 2800);
   };
 
-  // ── Generated sets metadata list ──────────────────────────────────────────
-  const [localSets, setLocalSets] = useState<GeneratedSet[]>([]);
-
-  // ── Per-set content store ─────────────────────────────────────────────────
-  // Keyed by set _id; holds the full questions / cards for interactive review.
+  // ── Per-set content store — fetched lazily on selection ────────────────────
   const [setContents, setSetContents] = useState<Record<string, SetContent>>({});
+  const [selectedSetId, setSelectedSetId] = useState<string | null>(null);
+  const [contentLoading, setContentLoading] = useState(false);
 
   function updateSetQuestions(setId: string, questions: AdminQuizQuestion[]) {
-    setSetContents((prev) => ({ ...prev, [setId]: { ...prev[setId], type: "quiz", questions } }));
+    setSetContents((prev) => ({ ...prev, [setId]: { type: "quiz", questions } }));
   }
 
   function updateSetCards(setId: string, cards: AdminFlashcard[]) {
-    setSetContents((prev) => ({ ...prev, [setId]: { ...prev[setId], type: "flashcards", cards } }));
+    setSetContents((prev) => ({ ...prev, [setId]: { type: "flashcardSet", cards } }));
   }
 
-  // ── Hydrate from previously-generated quizzes/flashcards on load ───────────
-  // Without this, localSets/setContents (populated only by generation mutations)
-  // reset to empty every time this page is revisited, even though the sets
-  // are still saved server-side.
+  // Auto-select the most recent set once sets load, and lazily fetch content
+  // for whichever set is selected.
   useEffect(() => {
-    if (!existingQuizzes?.length) return;
-    setLocalSets((prev) => {
-      const seen = new Set(prev.map((s) => s.id));
-      const restored: GeneratedSet[] = existingQuizzes
-        .filter((q) => !seen.has(q._id))
-        .map((q) => ({
-          id: q._id,
-          type: "quiz",
-          title: q.title,
-          questionCount: q.questions.length,
-          generatedAt: formatDate(q.createdAt ?? new Date().toISOString()),
-        }));
-      return restored.length ? [...prev, ...restored] : prev;
-    });
-    setSetContents((prev) => {
-      const next = { ...prev };
-      for (const q of existingQuizzes) {
-        if (!next[q._id]) next[q._id] = { type: "quiz", questions: q.questions };
-      }
-      return next;
-    });
-  }, [existingQuizzes]);
+    if (!selectedSetId && allSets.length > 0) {
+      setSelectedSetId(allSets[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allSets.length]);
 
   useEffect(() => {
-    if (!existingFlashcardSets?.length) return;
-    setLocalSets((prev) => {
-      const seen = new Set(prev.map((s) => s.id));
-      const restored: GeneratedSet[] = existingFlashcardSets
-        .filter((s) => !seen.has(s._id))
-        .map((s) => ({
-          id: s._id,
-          type: "flashcards",
-          title: s.title,
-          questionCount: s.cards.length,
-          generatedAt: formatDate(s.createdAt ?? new Date().toISOString()),
-        }));
-      return restored.length ? [...prev, ...restored] : prev;
-    });
-    setSetContents((prev) => {
-      const next = { ...prev };
-      for (const s of existingFlashcardSets) {
-        if (!next[s._id]) next[s._id] = { type: "flashcards", cards: s.cards };
-      }
-      return next;
-    });
-  }, [existingFlashcardSets]);
+    if (!selectedSetId || !orgToken || setContents[selectedSetId]) return;
+    const set = allSets.find((s) => s.id === selectedSetId);
+    if (!set) return;
+
+    let cancelled = false;
+    setContentLoading(true);
+    const fetcher =
+      set.type === "quiz"
+        ? orgApi.getQuizById(orgToken, selectedSetId).then((q) => ({ type: "quiz" as const, questions: q.questions }))
+        : orgApi.getFlashcardSetById(orgToken, selectedSetId).then((s) => ({ type: "flashcardSet" as const, cards: s.cards }));
+
+    fetcher
+      .then((content) => {
+        if (cancelled) return;
+        setSetContents((prev) => ({ ...prev, [selectedSetId]: content }));
+      })
+      .catch(() => {
+        if (!cancelled) showToast("Could not load that set — please try again");
+      })
+      .finally(() => {
+        if (!cancelled) setContentLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSetId, orgToken]);
 
   // ── Modal visibility ──────────────────────────────────────────────────────
   const [genQuizOpen, setGenQuizOpen]       = useState(false);
   const [genFlashOpen, setGenFlashOpen]     = useState(false);
-  const [quizReviewOpen, setQuizReviewOpen] = useState(false);
-  const [flashPreviewOpen, setFlashPreviewOpen] = useState(false);
   const [exportOpen, setExportOpen]         = useState(false);
   const [deleteOpen, setDeleteOpen]         = useState<string | null>(null);
-  const [openMenuId, setOpenMenuId]         = useState<string | null>(null);
 
   // ── Generation inputs ─────────────────────────────────────────────────────
   const [quizQCount, setQuizQCount]       = useState(20);
   const [flashCardCount, setFlashCardCount] = useState(18);
-
-  // ── Legacy modal state (used by existing quiz-review / flash-preview modals)
-  const [generatedQuestions, setGeneratedQuestions] = useState<AdminQuizQuestion[]>([]);
-  const [generatedCards, setGeneratedCards]         = useState<AdminFlashcard[]>([]);
-  const [activeQuizId, setActiveQuizId]             = useState<string | null>(null);
-  const [activeFlashId, setActiveFlashId]           = useState<string | null>(null);
-  const [reviewSetTitle, setReviewSetTitle]         = useState("");
   const [exportIncludesAnswers, setExportIncludesAnswers] = useState(true);
   const [exportFormat, setExportFormat]             = useState<"pdf" | "docx">("pdf");
-
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpenMenuId(null);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  const [exportTargetId, setExportTargetId] = useState<string | null>(null);
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
   const generateQuizMutation = useMutation({
-    mutationFn: (qCount: number) =>
-      orgApi.generateAdminQuiz(orgToken ?? "", fileId, { questionCount: qCount }),
+    mutationFn: (qCount: number) => orgApi.generateAdminQuiz(orgToken ?? "", fileId, qCount),
     onSuccess: (data) => {
-      const newSet: GeneratedSet = {
+      const newSet: OrgGeneratedSetSummary = {
         id: data._id,
-        type: "quiz",
-        title: data.title,
+        noteId: fileId,
+        noteTitle: note?.title ?? "",
         questionCount: data.questions.length,
-        generatedAt: formatDate(new Date().toISOString()),
+        type: "quiz",
+        createdAt: data.createdAt,
       };
-      setLocalSets((prev) => [newSet, ...prev]);
+      setLocalOnlySets((prev) => [newSet, ...prev]);
       setSetContents((prev) => ({ ...prev, [data._id]: { type: "quiz", questions: data.questions } }));
-      // Legacy modal state
-      setGeneratedQuestions(data.questions);
-      setActiveQuizId(data._id);
-      setReviewSetTitle(data.title);
+      setSelectedSetId(data._id);
       setGenQuizOpen(false);
-      setQuizReviewOpen(true);
       showToast("Quiz generated — review answers below");
-      // Switch to Assessments tab automatically
       setActiveTab("assessments");
     },
     onError: (err: Error) => showToast(err.message || "Failed to generate quiz"),
   });
 
   const generateFlashMutation = useMutation({
-    mutationFn: (cardCount: number) =>
-      orgApi.generateAdminFlashcards(orgToken ?? "", fileId, { cardCount }),
+    mutationFn: (cardCount: number) => orgApi.generateAdminFlashcards(orgToken ?? "", fileId, cardCount),
     onSuccess: (data) => {
-      const newSet: GeneratedSet = {
+      const newSet: OrgGeneratedSetSummary = {
         id: data._id,
-        type: "flashcards",
-        title: data.title,
+        noteId: fileId,
+        noteTitle: note?.title ?? "",
         questionCount: data.cards.length,
-        generatedAt: formatDate(new Date().toISOString()),
+        type: "flashcardSet",
+        createdAt: data.createdAt,
       };
-      setLocalSets((prev) => [newSet, ...prev]);
-      setSetContents((prev) => ({ ...prev, [data._id]: { type: "flashcards", cards: data.cards } }));
-      // Legacy modal state
-      setGeneratedCards(data.cards);
-      setActiveFlashId(data._id);
-      setReviewSetTitle(data.title);
+      setLocalOnlySets((prev) => [newSet, ...prev]);
+      setSetContents((prev) => ({ ...prev, [data._id]: { type: "flashcardSet", cards: data.cards } }));
+      setSelectedSetId(data._id);
       setGenFlashOpen(false);
-      setFlashPreviewOpen(true);
       showToast("Flashcards generated — review below");
       setActiveTab("assessments");
     },
     onError: (err: Error) => showToast(err.message || "Failed to generate flashcards"),
   });
 
-  const generateMoreMutation = useMutation({
-    mutationFn: ({
-      type,
-      setId,
-    }: {
-      type: "quiz" | "flashcards";
-      setId: string | null;
-    }) =>
-      orgApi.generateMore(orgToken ?? "", fileId, {
-        type,
-        count: type === "quiz" ? 5 : 8,
-        quizId: type === "quiz" ? (setId ?? null) : null,
-        flashcardSetId: type === "flashcards" ? (setId ?? null) : null,
-      }),
-    onSuccess: (result, { setId }) => {
-      if (result.type === "quiz" && setId) {
-        const existing = setContents[setId]?.questions ?? [];
-        const merged = [...existing, ...result.questions];
-        updateSetQuestions(setId, merged);
-        setLocalSets((prev) =>
-          prev.map((s) => s.id === setId ? { ...s, questionCount: merged.length } : s)
-        );
-        showToast(`Added ${result.questions.length} more questions`);
-      } else if (result.type === "flashcards" && setId) {
-        const existing = setContents[setId]?.cards ?? [];
-        const merged = [...existing, ...result.cards];
-        updateSetCards(setId, merged);
-        setLocalSets((prev) =>
-          prev.map((s) => s.id === setId ? { ...s, questionCount: merged.length } : s)
-        );
-        showToast(`Added ${result.cards.length} more cards`);
-      }
-    },
-    onError: (err: Error) => showToast(err.message || "Failed to generate more content"),
-  });
-
   // ── Derived ───────────────────────────────────────────────────────────────
 
-  const allSets = localSets;
   const title = noteLoading ? "Loading…" : (note?.title ?? "File workspace");
   const uploadedAt = note?.createdAt ? formatDate(note.createdAt) : "";
 
@@ -654,33 +391,32 @@ export default function FileWorkspacePage() {
     { label: "Upload",          status: "done"    as const },
     { label: "Summary",         status: note?.summary ? ("done" as const) : ("current" as const) },
     { label: "Generate Q&A",    status: allSets.length > 0 ? ("done" as const) : (note?.summary ? ("current" as const) : ("pending" as const)) },
-    { label: "Review",          status: (quizReviewOpen || flashPreviewOpen) ? ("current" as const) : ("pending" as const) },
-    { label: "Export to print", status: "pending" as const },
+    { label: "Export to print", status: allSets.length > 0 ? ("current" as const) : ("pending" as const) },
   ];
 
   // ── Export helpers ────────────────────────────────────────────────────────
 
-  const openExportForActive = (includeAnswers: boolean) => {
+  const openExportFor = (id: string, includeAnswers: boolean) => {
+    setExportTargetId(id);
     setExportIncludesAnswers(includeAnswers);
-    setOpenMenuId(null);
     setExportOpen(true);
   };
 
   const handleExportDownload = () => {
-    const type = exportIncludesAnswers ? "answers" : "questions";
-    const url = activeQuizId
-      ? orgApi.getQuizExportUrl(activeQuizId, type, exportFormat)
-      : activeFlashId
-      ? orgApi.getFlashcardExportUrl(activeFlashId, type, exportFormat)
-      : null;
+    if (!exportTargetId) return;
+    const set = allSets.find((s) => s.id === exportTargetId);
+    const url =
+      set?.type === "quiz"
+        ? orgApi.getQuizExportUrl(exportTargetId, exportIncludesAnswers, exportFormat)
+        : orgApi.getFlashcardExportUrl(exportTargetId, exportIncludesAnswers, exportFormat);
 
-    if (url && orgToken) {
+    if (orgToken) {
       fetch(url, { headers: { Authorization: `Bearer ${orgToken}` } })
         .then((r) => r.blob())
         .then((blob) => {
           const a = document.createElement("a");
           a.href = URL.createObjectURL(blob);
-          a.download = `${reviewSetTitle}.${exportFormat}`;
+          a.download = `${set ? setTitle(set.type, set.questionCount) : "export"}.${exportFormat}`;
           a.click();
           URL.revokeObjectURL(a.href);
           showToast("Export ready — check your downloads");
@@ -691,7 +427,7 @@ export default function FileWorkspacePage() {
   };
 
   const handleDeleteSet = async (id: string) => {
-    const set = localSets.find((s) => s.id === id);
+    const set = allSets.find((s) => s.id === id);
     if (!set) {
       setDeleteOpen(null);
       return;
@@ -709,19 +445,16 @@ export default function FileWorkspacePage() {
       return;
     }
 
-    setLocalSets((prev) => prev.filter((s) => s.id !== id));
+    setDeletedIds((prev) => new Set(prev).add(id));
+    setLocalOnlySets((prev) => prev.filter((s) => s.id !== id));
     setSetContents((prev) => { const next = { ...prev }; delete next[id]; return next; });
-    if (id === activeQuizId) setActiveQuizId(null);
-    if (id === activeFlashId) setActiveFlashId(null);
+    if (selectedSetId === id) setSelectedSetId(null);
     setDeleteOpen(null);
     showToast("Set deleted");
+    queryClient.invalidateQueries({ queryKey: ["org-note-sets", fileId] });
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
-  function handleGenerateMore(type: "quiz" | "flashcards", setId: string | null) {
-    generateMoreMutation.mutate({ type, setId });
-  }
+  const selectedContent = selectedSetId ? setContents[selectedSetId] : null;
 
   return (
     <>
@@ -752,7 +485,7 @@ export default function FileWorkspacePage() {
           <TabBar
             active={activeTab}
             onChange={setActiveTab}
-            assessmentCount={localSets.length}
+            assessmentCount={allSets.length}
           />
 
           {noteLoading ? (
@@ -766,22 +499,21 @@ export default function FileWorkspacePage() {
               ))}
             </div>
           ) : activeTab === "source" ? (
-            note ? <SourcePanel note={note} /> : null
+            note ? <SourceViewer note={note} /> : null
           ) : activeTab === "summary" ? (
             note ? <SummaryPanel note={note} /> : null
           ) : (
             /* Assessments tab */
             <AssessmentsPanel
-              noteId={fileId}
-              orgToken={orgToken ?? ""}
-              localSets={localSets}
-              setContents={setContents}
+              localSets={allSets}
+              selectedSetId={selectedSetId}
+              onSelectSet={setSelectedSetId}
+              content={selectedContent}
+              contentLoading={contentLoading}
               onQuestionsChange={updateSetQuestions}
               onCardsChange={updateSetCards}
               onGenerateQuiz={() => setGenQuizOpen(true)}
               onGenerateFlash={() => setGenFlashOpen(true)}
-              onGenerateMore={handleGenerateMore}
-              isGeneratingMore={generateMoreMutation.isPending}
               onToast={showToast}
             />
           )}
@@ -827,7 +559,7 @@ export default function FileWorkspacePage() {
             <h3 className="font-source-serif text-[16.5px] text-edu-moss-dark">Your generated entries</h3>
             <p className="mt-0.5 text-[12.5px] text-edu-blue-grey">
               {allSets.filter((s) => s.type === "quiz").length} quiz set(s) ·{" "}
-              {allSets.filter((s) => s.type === "flashcards").length} flashcard set(s) — private to you.
+              {allSets.filter((s) => s.type === "flashcardSet").length} flashcard set(s) — private to you.
             </p>
           </div>
 
@@ -865,67 +597,39 @@ export default function FileWorkspacePage() {
                       key={set.id}
                       className="cursor-pointer border-b border-edu-line last:border-b-0 transition-colors hover:bg-edu-paper-2"
                       onClick={() => {
-                        setReviewSetTitle(set.title);
-                        const content = setContents[set.id];
-                        if (set.type === "quiz") {
-                          setGeneratedQuestions(content?.questions ?? []);
-                          setActiveQuizId(set.id);
-                          setQuizReviewOpen(true);
-                        } else {
-                          setGeneratedCards(content?.cards ?? []);
-                          setActiveFlashId(set.id);
-                          setFlashPreviewOpen(true);
-                        }
+                        setSelectedSetId(set.id);
+                        setActiveTab("assessments");
                       }}
                     >
-                      <td className="px-5 py-3.5 text-sm capitalize text-edu-ink">{set.type}</td>
-                      <td className="px-5 py-3.5 text-sm text-edu-ink">{set.title}</td>
+                      <td className="px-5 py-3.5 text-sm capitalize text-edu-ink">{set.type === "quiz" ? "Quiz" : "Flashcards"}</td>
+                      <td className="px-5 py-3.5 text-sm text-edu-ink">{setTitle(set.type, set.questionCount)}</td>
                       <td className="px-5 py-3.5 text-sm text-edu-ink">{set.questionCount}</td>
-                      <td className="px-5 py-3.5 text-sm text-edu-blue-grey">{set.generatedAt}</td>
+                      <td className="px-5 py-3.5 text-sm text-edu-blue-grey">{formatDate(set.createdAt)}</td>
                       <td className="px-5 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
-                        <div
-                          className="relative inline-block"
-                          ref={openMenuId === set.id ? menuRef : undefined}
-                        >
-                          <button
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-edu-line bg-white text-sm text-edu-blue-grey hover:bg-edu-paper-2"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setOpenMenuId(openMenuId === set.id ? null : set.id);
-                              setReviewSetTitle(set.title);
-                              if (set.type === "quiz") setActiveQuizId(set.id);
-                              else setActiveFlashId(set.id);
-                            }}
-                            title="More actions"
-                          >
-                            ⋯
-                          </button>
-                          {openMenuId === set.id && (
-                            <div
-                              className="absolute right-0 top-full z-50 mt-1 min-w-[220px] overflow-hidden rounded-lg border border-edu-line bg-white"
-                              style={{ boxShadow: "0 6px 20px rgba(21,35,31,0.15)" }}
-                            >
+                        <ActionMenu label="More actions">
+                          {(close) => (
+                            <>
                               <button
                                 className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-[13px] font-semibold text-edu-ink hover:bg-edu-paper-2"
-                                onClick={() => openExportForActive(true)}
+                                onClick={() => { close(); openExportFor(set.id, true); }}
                               >
                                 Export questions &amp; answers
                               </button>
                               <button
                                 className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-[13px] font-semibold text-edu-ink hover:bg-edu-paper-2"
-                                onClick={() => openExportForActive(false)}
+                                onClick={() => { close(); openExportFor(set.id, false); }}
                               >
                                 Export questions only
                               </button>
                               <button
                                 className="flex w-full items-center gap-2 border-t border-edu-line px-3.5 py-2.5 text-left text-[13px] font-semibold text-edu-red hover:bg-edu-red-light"
-                                onClick={() => { setOpenMenuId(null); setDeleteOpen(set.id); }}
+                                onClick={() => { close(); setDeleteOpen(set.id); }}
                               >
                                 Delete
                               </button>
-                            </div>
+                            </>
                           )}
-                        </div>
+                        </ActionMenu>
                       </td>
                     </tr>
                   ))
@@ -992,115 +696,10 @@ export default function FileWorkspacePage() {
         </Modal>
       )}
 
-      {/* ── Quiz Review Modal (legacy — still works from table row click) ───── */}
-      {quizReviewOpen && (
-        <div
-          className="fixed inset-0 z-[1000] flex items-center justify-center bg-edu-moss-dark/45 p-5"
-          onClick={(e) => e.currentTarget === e.target && setQuizReviewOpen(false)}
-        >
-          <div
-            className="flex max-h-[85vh] w-full max-w-[640px] flex-col overflow-hidden rounded-xl bg-white"
-            style={{ boxShadow: "0 10px 40px rgba(0,0,0,0.25)" }}
-          >
-            <div className="border-b border-edu-line px-7 py-5">
-              <h3 className="font-source-serif text-lg text-edu-ink">{reviewSetTitle}</h3>
-              <p className="mt-0.5 text-sm text-edu-blue-grey">
-                {generatedQuestions.length} questions · review before exporting to print
-              </p>
-              <div className="mt-2.5 inline-flex items-center gap-1.5 rounded-md bg-edu-gold-light px-2.5 py-1 text-[11px] font-bold text-[#8A5A18]">
-                Admin view — correct answers highlighted.
-              </div>
-            </div>
-            <div className="flex-1 space-y-3 overflow-y-auto px-7 py-5">
-              {generatedQuestions.map((q, idx) => {
-                const correctIdx = letterToIndex(q.correctAnswer);
-                return (
-                  <div key={q.id ?? idx} className="rounded-xl border border-edu-line bg-white p-4">
-                    <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-edu-gold">
-                      Q{idx + 1}
-                    </p>
-                    <p className="mb-2.5 text-sm font-semibold text-edu-ink">{q.question}</p>
-                    <div className="mb-2.5 grid grid-cols-2 gap-2">
-                      {q.options.map((opt, i) => (
-                        <div
-                          key={opt.id ?? i}
-                          className={`rounded-md p-2 text-xs ${i === correctIdx ? "border border-edu-moss bg-edu-moss-light font-bold text-edu-moss-dark" : "bg-edu-paper-2 text-edu-ink"}`}
-                        >
-                          <span className="mr-1 font-bold text-edu-blue-grey">{"ABCD"[i]}.</span>
-                          {opt.text}
-                        </div>
-                      ))}
-                    </div>
-                    {q.explanation && (
-                      <p className="border-t border-edu-line pt-2 text-[12px] text-edu-blue-grey">
-                        <b>Why:</b> {q.explanation}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            <div className="flex gap-2.5 border-t border-edu-line px-7 py-5">
-              <button className="flex-1 rounded-lg border-[1.5px] border-edu-line py-2.5 text-sm font-bold text-edu-blue-grey hover:bg-edu-paper-2" onClick={() => setQuizReviewOpen(false)}>Close</button>
-              <button
-                className="flex-1 rounded-lg bg-edu-moss py-2.5 text-sm font-bold text-white hover:bg-edu-moss-dark"
-                onClick={() => { setQuizReviewOpen(false); setExportIncludesAnswers(true); setExportOpen(true); }}
-              >
-                Export
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Flashcard Preview Modal ───────────────────────────────────────────── */}
-      {flashPreviewOpen && (
-        <div
-          className="fixed inset-0 z-[1000] flex items-center justify-center bg-edu-moss-dark/45 p-5"
-          onClick={(e) => e.currentTarget === e.target && setFlashPreviewOpen(false)}
-        >
-          <div
-            className="flex max-h-[85vh] w-full max-w-[600px] flex-col overflow-hidden rounded-xl bg-white"
-            style={{ boxShadow: "0 10px 40px rgba(0,0,0,0.25)" }}
-          >
-            <div className="border-b border-edu-line px-7 py-5">
-              <h3 className="font-source-serif text-lg text-edu-ink">{reviewSetTitle}</h3>
-              <p className="mt-0.5 text-sm text-edu-blue-grey">{generatedCards.length} cards</p>
-              <div className="mt-2.5 inline-flex items-center gap-1.5 rounded-md bg-edu-gold-light px-2.5 py-1 text-[11px] font-bold text-[#8A5A18]">
-                Admin view — tap a card to flip and reveal the answer.
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto px-7 py-5">
-              <FlashcardViewer
-                flashcardSetId={activeFlashId ?? ""}
-                cards={generatedCards}
-                onCardsChange={(updated) => {
-                  setGeneratedCards(updated);
-                  if (activeFlashId) updateSetCards(activeFlashId, updated);
-                }}
-                onSaveCard={async (setId, cardId, data) => {
-                  await orgApi.updateFlashcard(orgToken ?? "", setId, cardId, data);
-                }}
-                onToast={showToast}
-              />
-            </div>
-            <div className="flex gap-2.5 border-t border-edu-line px-7 py-5">
-              <button className="flex-1 rounded-lg border-[1.5px] border-edu-line py-2.5 text-sm font-bold text-edu-blue-grey hover:bg-edu-paper-2" onClick={() => setFlashPreviewOpen(false)}>Close</button>
-              <button
-                className="flex-1 rounded-lg bg-edu-moss py-2.5 text-sm font-bold text-white hover:bg-edu-moss-dark"
-                onClick={() => { setFlashPreviewOpen(false); setExportIncludesAnswers(true); setExportOpen(true); }}
-              >
-                Export flashcards
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ── Export Modal ──────────────────────────────────────────────────────── */}
       {exportOpen && (
         <Modal
-          title={`Export "${reviewSetTitle}"`}
+          title="Export set"
           description="Choose a format and what to include."
           onClose={() => setExportOpen(false)}
         >

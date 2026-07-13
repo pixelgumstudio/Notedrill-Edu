@@ -1,205 +1,112 @@
-import type {
-  StudentFile,
-  StudentQuizAttempt,
-  StudentFlashcardSession,
-  FlashCard,
-  StudentQuizResult,
-} from '@/types/edu';
-import type { AdminGeneratedQuiz, AdminGeneratedFlashcardSet } from '@/types/edu';
+/**
+ * Student API client for backend.notedrill.com.
+ * See org-api.ts for the shared fetch/envelope conventions.
+ */
 
-const BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8081/api/v1';
+import { apiFetch, BASE_URL } from "./api-fetch";
+import type { LoginResponse, PaginationMeta, StudentNoteSummary, StudentNoteDetail, StudentQuizAttempt, StudentFlashcardSet } from "@/types/edu";
 
-/** Fetch from /api/v1/* and unwrap the `.data` field from successResponse. */
-async function baseFetch<T>(path: string, options: RequestInit & { token?: string } = {}): Promise<T> {
-  const { token, ...fetchOptions } = options;
+async function studentFetch<T>(path: string, options: Omit<Parameters<typeof apiFetch>[1], "kind"> = {}): Promise<T> {
+  return apiFetch<T>(path, { ...options, kind: "student" });
+}
 
+async function studentFetchPaginated<T>(
+  path: string,
+  options: Omit<Parameters<typeof apiFetch>[1], "kind"> = {},
+): Promise<{ items: T[]; pagination: PaginationMeta }> {
+  const { token, ...rest } = options;
   const res = await fetch(`${BASE_URL}${path}`, {
-    ...fetchOptions,
+    ...rest,
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(fetchOptions.headers ?? {}),
     },
   });
-
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as { message?: string }).message ?? `API error ${res.status}`);
   }
-
-  const json = await res.json();
-  return (json?.data ?? json) as T;
-}
-
-// ── Response shapes from the backend ─────────────────────────────────────────
-
-/** Raw note shape returned by GET /notes */
-interface RawNote {
-  _id: string;
-  title: string;
-  sourceType?: string;
-  type?: string;
-  summary?: string;
-  content?: string;
-  createdAt: string;
-  orgId?: string;
-}
-
-/** Raw quiz shape returned by GET /quizzes/note/:noteId */
-interface RawQuizAttempt {
-  _id: string;
-  totalQuestions: number;
-  averageScore?: number;
-  createdAt: string;
-  lastAttemptAt?: string;
-}
-
-/** Raw flashcard set shape returned by GET /flashcards */
-interface RawFlashcardSet {
-  _id: string;
-  totalCards: number;
-  masteredCards?: number;
-  createdAt: string;
-}
-
-/** Quiz submit result from POST /quizzes/:id/submit */
-export interface QuizSubmitResult {
-  score: number;
-  correctCount: number;
-  totalQuestions: number;
-  percentage: number;
-  results: Array<{
-    questionIndex: number;
-    questionText: string;
-    userAnswer: string;
-    correctAnswer: string;
-    isCorrect: boolean;
-    explanation: string;
-  }>;
-}
-
-// ── Mappers ───────────────────────────────────────────────────────────────────
-
-function mapNote(n: RawNote): StudentFile {
+  const json = (await res.json()) as { data: T[]; meta?: { pagination: PaginationMeta } };
   return {
-    id: n._id,
-    title: n.title,
-    type: (n.sourceType ?? n.type ?? 'pdf') as StudentFile['type'],
-    uploadedBy: '',
-    uploadedAt: new Date(n.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-    quizCount: 0,
-    flashcardSetCount: 0,
-    summary: n.summary,
-    content: n.content,
-    summaryTitle: n.title,
+    items: json.data ?? [],
+    pagination: json.meta?.pagination ?? { page: 1, limit: json.data?.length ?? 0, total: json.data?.length ?? 0, totalPages: 1, hasNextPage: false, hasPrevPage: false },
   };
 }
-
-function mapQuizAttempt(q: RawQuizAttempt): StudentQuizAttempt {
-  const d = new Date(q.lastAttemptAt ?? q.createdAt);
-  return {
-    id: q._id,
-    questionCount: q.totalQuestions,
-    score: q.averageScore ?? 0,
-    date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-    time: d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-  };
-}
-
-function mapFlashcardSession(s: RawFlashcardSet): StudentFlashcardSession {
-  return {
-    id: s._id,
-    cardCount: s.totalCards,
-    date: new Date(s.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-    reviewedAll: (s.masteredCards ?? 0) >= s.totalCards,
-  };
-}
-
-// ── API surface ───────────────────────────────────────────────────────────────
 
 export const studentApi = {
-  /** All notes visible to this student (own + org). GET /notes */
-  getFiles: async (token: string): Promise<StudentFile[]> => {
-    const data = await baseFetch<RawNote[] | RawNote>('/notes', { token });
-    const notes = Array.isArray(data) ? data : [];
-    return notes.map(mapNote);
+  // ── Auth (no token required) ──────────────────────────────────────────────
+
+  /** Request a sign-in code. POST /auth/otp/request */
+  requestOtp: (email: string): Promise<null> =>
+    studentFetch<null>("/auth/otp/request", { method: "POST", body: JSON.stringify({ email }) }),
+
+  /** Verify the sign-in code. POST /auth/otp/verify */
+  verifyOtp: (email: string, code: string): Promise<LoginResponse> =>
+    studentFetch<LoginResponse>("/auth/otp/verify", { method: "POST", body: JSON.stringify({ email, code }) }),
+
+  // ── Notes ──────────────────────────────────────────────────────────────────
+
+  /** GET /students/dashboard/notes */
+  getFiles: (token: string, params?: { page?: number; limit?: number }): Promise<{ items: StudentNoteSummary[]; pagination: PaginationMeta }> => {
+    const qs = new URLSearchParams();
+    if (params?.page) qs.set("page", String(params.page));
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return studentFetchPaginated<StudentNoteSummary>(`/students/dashboard/notes${suffix}`, { token });
   },
 
-  /** Single note detail. GET /notes/:noteId */
-  getFile: async (token: string, id: string): Promise<StudentFile> => {
-    const note = await baseFetch<RawNote>(`/notes/${id}`, { token });
-    return mapNote(note);
-  },
+  /** GET /students/dashboard/notes/:noteId */
+  getFile: (token: string, noteId: string): Promise<StudentNoteDetail> =>
+    studentFetch<StudentNoteDetail>(`/students/dashboard/notes/${noteId}`, { token }),
 
-  /** Quiz attempts for a note. GET /quizzes/note/:noteId */
-  getQuizHistory: async (token: string, fileId: string): Promise<StudentQuizAttempt[]> => {
-    const data = await baseFetch<RawQuizAttempt[]>(`/quizzes/note/${fileId}`, { token });
-    const quizzes = Array.isArray(data) ? data : [];
-    return quizzes.map(mapQuizAttempt);
-  },
+  // ── Quizzes ────────────────────────────────────────────────────────────────
 
-  /** Flashcard sets for a note. GET /flashcards?noteId=... */
-  getFlashcardHistory: async (token: string, fileId: string): Promise<StudentFlashcardSession[]> => {
-    const data = await baseFetch<RawFlashcardSet[]>(`/flashcards?noteId=${fileId}`, { token });
-    const sets = Array.isArray(data) ? data : [];
-    return sets.map(mapFlashcardSession);
-  },
+  /** GET /students/dashboard/notes/:noteId/quizzes */
+  getQuizHistory: (token: string, noteId: string): Promise<{ items: StudentQuizAttempt[]; pagination: PaginationMeta }> =>
+    studentFetchPaginated<StudentQuizAttempt>(`/students/dashboard/notes/${noteId}/quizzes`, { token }),
 
-  /**
-   * Generate a new quiz. POST /quizzes/generate
-   * Returns the full quiz (with correctAnswer) — used to cache questions locally.
-   */
-  generateQuiz: (
+  /** POST /students/dashboard/notes/:noteId/quizzes */
+  generateQuiz: (token: string, noteId: string, count: number, timeLimitMinutes: number): Promise<StudentQuizAttempt> =>
+    studentFetch<StudentQuizAttempt>(`/students/dashboard/notes/${noteId}/quizzes`, {
+      method: "POST",
+      body: JSON.stringify({ count, timeLimitMinutes }),
+      token,
+    }),
+
+  // Note: there is no GET for a single attempt by id on this backend — the
+  // list endpoint above only returns summary fields (no questions/review).
+  // The quiz-taking and results pages carry the full payload through
+  // sessionStorage from the generate/submit responses instead.
+
+  /** POST /students/dashboard/notes/:noteId/quizzes/:attemptId/submit */
+  submitQuiz: (
     token: string,
     noteId: string,
-    opts: { questionCount: number; difficulty?: string },
-  ): Promise<AdminGeneratedQuiz> =>
-    baseFetch<AdminGeneratedQuiz>('/quizzes/generate', {
-      method: 'POST',
+    attemptId: string,
+    answers: { questionIndex: number; answer: string }[],
+    timeTakenSeconds: number,
+  ): Promise<StudentQuizAttempt> =>
+    studentFetch<StudentQuizAttempt>(`/students/dashboard/notes/${noteId}/quizzes/${attemptId}/submit`, {
+      method: "POST",
+      body: JSON.stringify({ answers, timeTakenSeconds }),
       token,
-      body: JSON.stringify({
-        noteId,
-        questionCount: opts.questionCount,
-        difficulty: opts.difficulty ?? 'medium',
-      }),
     }),
 
-  /**
-   * Fetch a quiz by ID. GET /quizzes/:quizId
-   * Returns questions without revealing correct answers to the UI (page responsible for hiding them).
-   */
-  getQuizById: (token: string, quizId: string): Promise<AdminGeneratedQuiz> =>
-    baseFetch<AdminGeneratedQuiz>(`/quizzes/${quizId}`, { token }),
+  // ── Flashcards ─────────────────────────────────────────────────────────────
 
-  /**
-   * Submit quiz answers. POST /quizzes/:quizId/submit
-   * answers: array of letter strings indexed by question — e.g. ["A", "B", "C", "A"]
-   */
-  submitQuiz: (token: string, quizId: string, answers: string[]): Promise<QuizSubmitResult> =>
-    baseFetch<QuizSubmitResult>(`/quizzes/${quizId}/submit`, {
-      method: 'POST',
+  /** GET /students/dashboard/notes/:noteId/flashcards */
+  getFlashcardHistory: (token: string, noteId: string): Promise<{ items: StudentFlashcardSet[]; pagination: PaginationMeta }> =>
+    studentFetchPaginated<StudentFlashcardSet>(`/students/dashboard/notes/${noteId}/flashcards`, { token }),
+
+  // Note: there is no GET for a single flashcard set by id — but unlike
+  // quizzes, the list endpoint above already returns full `cards[]` per
+  // entry, so callers should find the set within getFlashcardHistory.
+
+  /** POST /students/dashboard/notes/:noteId/flashcards */
+  generateFlashcards: (token: string, noteId: string, count: number): Promise<StudentFlashcardSet> =>
+    studentFetch<StudentFlashcardSet>(`/students/dashboard/notes/${noteId}/flashcards`, {
+      method: "POST",
+      body: JSON.stringify({ count }),
       token,
-      body: JSON.stringify({ answers }),
     }),
-
-  /** Generate new flashcards. POST /flashcards/generate */
-  generateFlashcards: (
-    token: string,
-    noteId: string,
-    opts: { cardCount: number; difficulty?: string },
-  ): Promise<AdminGeneratedFlashcardSet> =>
-    baseFetch<AdminGeneratedFlashcardSet>('/flashcards/generate', {
-      method: 'POST',
-      token,
-      body: JSON.stringify({
-        noteId,
-        cardCount: opts.cardCount,
-        difficulty: opts.difficulty ?? 'medium',
-      }),
-    }),
-
-  /** Get a flashcard set by ID. GET /flashcards/:setId */
-  getFlashcardSet: (token: string, setId: string): Promise<AdminGeneratedFlashcardSet> =>
-    baseFetch<AdminGeneratedFlashcardSet>(`/flashcards/${setId}`, { token }),
 };

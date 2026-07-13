@@ -38,7 +38,7 @@ export default function SummaryBox({ title, body, bodyIsHtml = false, stats, var
           dangerouslySetInnerHTML={{ __html: body }}
         />
       ) : (
-        <p className="text-[14.5px] leading-relaxed text-edu-ink">{body}</p>
+        <p className="whitespace-pre-line text-[14.5px] leading-relaxed text-edu-ink">{body}</p>
       )}
       {stats && stats.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-6 border-t border-edu-line pt-4">

@@ -6,34 +6,41 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
-import { orgRegisterSchema, type OrgRegisterInput } from "@notedrill/validation";
-import { orgApi, type OrgRegisterResponse } from "@/lib/org-api";
+import { orgRegisterProdSchema, type OrgRegisterProdInput } from "@notedrill/validation";
+import { orgApi } from "@/lib/org-api";
+import { useAuth } from "@/context/AuthContext";
 import BrandMark from "@/components/edu/BrandMark";
 import Toast from "@/components/edu/Toast";
 
 const SCHOOL_TYPES = [
-  { value: "university", label: "University" },
-  { value: "secondary", label: "Secondary School" },
   { value: "primary", label: "Primary School" },
-  { value: "tutoring_center", label: "Tutoring Centre" },
+  { value: "secondary", label: "Secondary School" },
+  { value: "tertiary", label: "Tertiary Institution" },
+  { value: "tutorial_center", label: "Tutorial Centre" },
   { value: "other", label: "Other" },
 ] as const;
 
-const EXAM_OPTIONS = ["WAEC", "NECO", "JAMB", "GCE", "ICAN", "ACCA", "SAT", "IELTS", "Other"];
+// Backend only accepts these 4 exact values (case-sensitive; "other" lowercase).
+const EXAM_OPTIONS = [
+  { value: "WAEC", label: "WAEC" },
+  { value: "JAMB", label: "JAMB" },
+  { value: "NECO", label: "NECO" },
+  { value: "other", label: "Other" },
+] as const;
 
 export default function OrgRegisterPage() {
+  const router = useRouter();
+  const { loginAsOrg } = useAuth();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [selectedExams, setSelectedExams] = useState<string[]>([]);
-  const [registered, setRegistered] = useState<(OrgRegisterResponse & { orgName: string }) | null>(null);
+  const [selectedExams, setSelectedExams] = useState<OrgRegisterProdInput["examFocus"]>([]);
 
   const {
     register,
     handleSubmit,
     setValue,
-    getValues,
     formState: { errors },
-  } = useForm<OrgRegisterInput>({
-    resolver: zodResolver(orgRegisterSchema),
+  } = useForm<OrgRegisterProdInput>({
+    resolver: zodResolver(orgRegisterProdSchema),
     defaultValues: { examFocus: [] },
   });
 
@@ -41,26 +48,20 @@ export default function OrgRegisterPage() {
     mutationFn: orgApi.register,
     onSuccess: (data) => {
       setErrorMsg(null);
-      // Stay on this page with a persistent success screen instead of an
-      // auto-redirecting toast — the School ID is only ever shown here and
-      // in the confirmation email, so it must not disappear on a timer.
-      setRegistered({ ...data, orgName: getValues("name") });
+      loginAsOrg(data.token, data.user);
+      router.push("/edu/dashboard");
     },
     onError: (err: Error) => {
       setErrorMsg(err.message || "Registration failed. Please try again.");
     },
   });
 
-  function toggleExam(exam: string) {
+  function toggleExam(exam: OrgRegisterProdInput["examFocus"][number]) {
     const next = selectedExams.includes(exam)
       ? selectedExams.filter((e) => e !== exam)
       : [...selectedExams, exam];
     setSelectedExams(next);
     setValue("examFocus", next, { shouldValidate: true });
-  }
-
-  if (registered) {
-    return <RegistrationSuccess result={registered} />;
   }
 
   return (
@@ -98,11 +99,11 @@ export default function OrgRegisterPage() {
           className="rounded-[var(--edu-radius)] border border-edu-line bg-white p-6 space-y-4"
           style={{ boxShadow: "var(--edu-shadow)" }}
         >
-          <Field label="Organisation Name" error={errors.name?.message}>
+          <Field label="Organisation Name" error={errors.schoolName?.message}>
             <input
-              {...register("name")}
+              {...register("schoolName")}
               placeholder="e.g. Greenfield Academy"
-              className={inputCls(!!errors.name)}
+              className={inputCls(!!errors.schoolName)}
             />
           </Field>
 
@@ -138,16 +139,16 @@ export default function OrgRegisterPage() {
             <div className="flex flex-wrap gap-2 mt-1">
               {EXAM_OPTIONS.map((exam) => (
                 <button
-                  key={exam}
+                  key={exam.value}
                   type="button"
-                  onClick={() => toggleExam(exam)}
+                  onClick={() => toggleExam(exam.value)}
                   className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
-                    selectedExams.includes(exam)
+                    selectedExams.includes(exam.value)
                       ? "bg-edu-moss text-white border-edu-moss"
                       : "bg-white text-edu-blue-grey border-edu-line hover:border-edu-moss hover:text-edu-moss"
                   }`}
                 >
-                  {exam}
+                  {exam.label}
                 </button>
               ))}
             </div>
@@ -171,6 +172,14 @@ export default function OrgRegisterPage() {
             />
           </Field>
 
+          <Field label="Your Role" error={errors.adminRole?.message}>
+            <input
+              {...register("adminRole")}
+              placeholder="e.g. Vice Principal"
+              className={inputCls(!!errors.adminRole)}
+            />
+          </Field>
+
           <Field label="Admin Email" error={errors.adminEmail?.message}>
             <input
               {...register("adminEmail")}
@@ -180,11 +189,21 @@ export default function OrgRegisterPage() {
             />
           </Field>
 
-          <Field label="Domain (optional)" error={errors.domain?.message}>
+          <Field label="Admin Phone" error={errors.adminPhone?.message}>
             <input
-              {...register("domain")}
-              placeholder="e.g. school.edu.ng"
-              className={inputCls(!!errors.domain)}
+              {...register("adminPhone")}
+              type="tel"
+              placeholder="+2348012345678"
+              className={inputCls(!!errors.adminPhone)}
+            />
+          </Field>
+
+          <Field label="Password" error={errors.password?.message}>
+            <input
+              {...register("password")}
+              type="password"
+              placeholder="At least 8 characters"
+              className={inputCls(!!errors.password)}
             />
           </Field>
 
@@ -203,72 +222,6 @@ export default function OrgRegisterPage() {
             </a>
           </p>
         </form>
-      </div>
-    </main>
-  );
-}
-
-function RegistrationSuccess({ result }: { result: OrgRegisterResponse & { orgName: string } }) {
-  const router = useRouter();
-  const [copied, setCopied] = useState(false);
-
-  const copySchoolId = () => {
-    navigator.clipboard.writeText(result.schoolId).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-
-  const continueToSignIn = () => {
-    router.push(`/org/login?schoolId=${encodeURIComponent(result.schoolId)}`);
-  };
-
-  return (
-    <main className="flex min-h-screen items-center justify-center p-4 md:p-8">
-      <div className="w-full max-w-md">
-        <div className="mb-8 flex flex-col items-center gap-2 text-center">
-          <BrandMark size="lg" />
-        </div>
-
-        <div
-          className="rounded-[var(--edu-radius)] border border-edu-line bg-white p-7 text-center"
-          style={{ boxShadow: "var(--edu-shadow)" }}
-        >
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-edu-moss-light text-2xl">
-            🎉
-          </div>
-          <h1 className="font-source-serif text-xl text-edu-ink">You&apos;re all set!</h1>
-          <p className="mt-2 text-sm text-edu-blue-grey">
-            {result.orgName} is registered on NoteDrill Edu. We&apos;ve also emailed this to your
-            admin address — but you&apos;ll need it right now to sign in, so keep it visible until
-            you&apos;ve copied it somewhere safe.
-          </p>
-
-          <div className="mt-5">
-            <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-edu-blue-grey">
-              Your School ID
-            </p>
-            <button
-              type="button"
-              onClick={copySchoolId}
-              title="Click to copy"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border-[1.5px] border-edu-moss bg-edu-moss-light px-4 py-3 font-source-serif text-lg font-bold text-edu-moss-dark transition-colors hover:bg-edu-moss/10"
-            >
-              {result.schoolId} <span aria-hidden="true">⧉</span>
-            </button>
-            <p className="mt-1.5 text-xs text-edu-blue-grey">
-              {copied ? "Copied!" : "Click to copy"}
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={continueToSignIn}
-            className="mt-6 w-full rounded-lg bg-edu-moss py-2.5 text-sm font-bold text-white transition-colors hover:bg-edu-moss-dark"
-          >
-            Continue to Sign In
-          </button>
-        </div>
       </div>
     </main>
   );

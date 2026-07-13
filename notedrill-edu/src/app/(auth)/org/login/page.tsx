@@ -6,18 +6,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
-import {
-  orgOtpRequestSchema,
-  orgOtpVerifySchema,
-  type OrgOtpRequestInput,
-  type OrgOtpVerifyInput,
-} from "@notedrill/validation";
+import { loginSchema, type LoginInput } from "@notedrill/validation";
 import { orgApi } from "@/lib/org-api";
 import { useAuth } from "@/context/AuthContext";
 import BrandMark from "@/components/edu/BrandMark";
 import Toast from "@/components/edu/Toast";
-
-type Step = "request" | "verify";
 
 export default function OrgLoginPage() {
   return (
@@ -29,18 +22,16 @@ export default function OrgLoginPage() {
 
 function OrgLoginPageInner() {
   const searchParams = useSearchParams();
-  // Populated when redirected here right after registration (see org/register/page.tsx).
-  const initialSchoolId = searchParams.get("schoolId") ?? "";
-
-  const [step, setStep] = useState<Step>("request");
-  const [prefillEmail, setPrefillEmail] = useState("");
-  const [prefillSchoolId, setPrefillSchoolId] = useState("");
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [forgotOpen, setForgotOpen] = useState(false);
 
   const { loginAsOrg } = useAuth();
   const router = useRouter();
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginInput>({ resolver: zodResolver(loginSchema) });
 
   useEffect(() => {
     if (searchParams.get("expired") === "1") {
@@ -48,6 +39,15 @@ function OrgLoginPageInner() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const mutation = useMutation({
+    mutationFn: orgApi.login,
+    onSuccess: (data) => {
+      loginAsOrg(data.token, data.user);
+      router.push("/edu/dashboard");
+    },
+    onError: (err: Error) => setErrorMsg(err.message || "Invalid email or password."),
+  });
 
   return (
     <main className="flex min-h-screen items-center justify-center p-4 md:p-8">
@@ -68,59 +68,46 @@ function OrgLoginPageInner() {
           <h1 className="mt-4 text-2xl font-semibold text-edu-ink font-source-serif">
             Organisation Sign In
           </h1>
-          <p className="text-sm text-edu-blue-grey">
-            {step === "request"
-              ? "Enter your email and School ID to receive a one-time code"
-              : "Enter the 6-digit code sent to your email"}
-          </p>
+          <p className="text-sm text-edu-blue-grey">Enter your admin email and password</p>
         </div>
 
-        {successMsg && (
-          <div className="mb-4">
-            <Toast message={successMsg} variant="success" onClose={() => setSuccessMsg(null)} />
-          </div>
-        )}
         {errorMsg && (
           <div className="mb-4">
             <Toast message={errorMsg} variant="error" onClose={() => setErrorMsg(null)} />
           </div>
         )}
 
-        {step === "request" ? (
-          <>
-            <RequestStep
-              initialSchoolId={initialSchoolId}
-              onSuccess={(email, schoolId) => {
-                setPrefillEmail(email);
-                setPrefillSchoolId(schoolId);
-                setSuccessMsg("Code sent! Check your email.");
-                setErrorMsg(null);
-                setStep("verify");
-              }}
-              onError={(msg) => setErrorMsg(msg)}
+        <form
+          onSubmit={handleSubmit((data) => mutation.mutate(data))}
+          className="rounded-[var(--edu-radius)] border border-edu-line bg-white p-6 space-y-4"
+          style={{ boxShadow: "var(--edu-shadow)" }}
+        >
+          <Field label="Admin Email" error={errors.email?.message}>
+            <input
+              {...register("email")}
+              type="email"
+              placeholder="admin@school.edu.ng"
+              className={inputCls(!!errors.email)}
             />
-            <p className="mt-3 text-center text-xs text-edu-blue-grey">
-              <button
-                type="button"
-                onClick={() => setForgotOpen(true)}
-                className="text-edu-moss hover:underline font-medium"
-              >
-                Forgot your School ID?
-              </button>
-            </p>
-          </>
-        ) : (
-          <VerifyStep
-            email={prefillEmail}
-            schoolId={prefillSchoolId}
-            onSuccess={(accessToken, refreshToken) => {
-              loginAsOrg(accessToken, refreshToken);
-              router.push("/edu/dashboard");
-            }}
-            onBack={() => setStep("request")}
-            onError={(msg) => setErrorMsg(msg)}
-          />
-        )}
+          </Field>
+
+          <Field label="Password" error={errors.password?.message}>
+            <input
+              {...register("password")}
+              type="password"
+              placeholder="••••••••"
+              className={inputCls(!!errors.password)}
+            />
+          </Field>
+
+          <button
+            type="submit"
+            disabled={mutation.isPending}
+            className="w-full rounded-[var(--edu-radius)] bg-edu-moss px-4 py-2.5 text-sm font-semibold text-white hover:bg-edu-moss-dark disabled:opacity-60 transition-colors"
+          >
+            {mutation.isPending ? "Signing in…" : "Sign In"}
+          </button>
+        </form>
 
         <p className="mt-4 text-center text-xs text-edu-blue-grey">
           No account yet?{" "}
@@ -129,206 +116,7 @@ function OrgLoginPageInner() {
           </a>
         </p>
       </div>
-
-      {forgotOpen && <ForgotSchoolIdModal onClose={() => setForgotOpen(false)} />}
     </main>
-  );
-}
-
-function ForgotSchoolIdModal({ onClose }: { onClose: () => void }) {
-  const [adminEmail, setAdminEmail] = useState("");
-  const [sent, setSent] = useState(false);
-
-  const mutation = useMutation({
-    mutationFn: () => orgApi.recoverSchoolId(adminEmail),
-    // Always shows the same generic confirmation, regardless of whether the
-    // email matched anything — matches the backend's privacy-preserving design.
-    onSuccess: () => setSent(true),
-    onError: () => setSent(true),
-  });
-
-  return (
-    <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-edu-moss-dark/45 p-5"
-      onClick={(e) => e.currentTarget === e.target && onClose()}
-    >
-      <div className="w-full max-w-[420px] rounded-xl bg-white p-7" style={{ boxShadow: "0 10px 40px rgba(0,0,0,0.25)" }}>
-        {sent ? (
-          <>
-            <h3 className="mb-2 font-source-serif text-lg text-edu-ink">Check your email</h3>
-            <p className="mb-5 text-sm leading-relaxed text-edu-blue-grey">
-              If an account exists for that email, we&apos;ve sent the School ID(s) to it.
-            </p>
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full rounded-lg bg-edu-moss py-2.5 text-sm font-bold text-white hover:bg-edu-moss-dark"
-            >
-              Close
-            </button>
-          </>
-        ) : (
-          <>
-            <h3 className="mb-2 font-source-serif text-lg text-edu-ink">Forgot your School ID?</h3>
-            <p className="mb-5 text-sm leading-relaxed text-edu-blue-grey">
-              Enter your admin email and we&apos;ll send your School ID(s) to it.
-            </p>
-            <div className="mb-5">
-              <label className="mb-1.5 block text-[12.5px] font-semibold text-edu-ink">Admin Email</label>
-              <input
-                type="email"
-                value={adminEmail}
-                onChange={(e) => setAdminEmail(e.target.value)}
-                placeholder="admin@school.edu.ng"
-                className="w-full rounded-lg border-[1.5px] border-edu-line bg-edu-paper p-2.5 text-sm focus:border-edu-moss focus:outline-none"
-              />
-            </div>
-            <div className="flex gap-2.5">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 rounded-lg border-[1.5px] border-edu-line py-2.5 text-sm font-bold text-edu-blue-grey hover:bg-edu-paper-2"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={!adminEmail || mutation.isPending}
-                onClick={() => mutation.mutate()}
-                className="flex-1 rounded-lg bg-edu-moss py-2.5 text-sm font-bold text-white hover:bg-edu-moss-dark disabled:opacity-60"
-              >
-                {mutation.isPending ? "Sending…" : "Send"}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function RequestStep({
-  initialSchoolId,
-  onSuccess,
-  onError,
-}: {
-  initialSchoolId?: string;
-  onSuccess: (email: string, schoolId: string) => void;
-  onError: (msg: string) => void;
-}) {
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<OrgOtpRequestInput>({
-    resolver: zodResolver(orgOtpRequestSchema),
-    defaultValues: { schoolId: initialSchoolId ?? "" },
-  });
-
-  const mutation = useMutation({
-    mutationFn: orgApi.requestOtp,
-    onSuccess: (_, vars) => onSuccess(vars.email, vars.schoolId),
-    onError: (err: Error) => onError(err.message || "Failed to send code. Please try again."),
-  });
-
-  return (
-    <form
-      onSubmit={handleSubmit((data) => mutation.mutate(data))}
-      className="rounded-[var(--edu-radius)] border border-edu-line bg-white p-6 space-y-4"
-      style={{ boxShadow: "var(--edu-shadow)" }}
-    >
-      <Field label="Admin Email" error={errors.email?.message}>
-        <input
-          {...register("email")}
-          type="email"
-          placeholder="admin@school.edu.ng"
-          className={inputCls(!!errors.email)}
-        />
-      </Field>
-
-      <Field label="School ID" error={errors.schoolId?.message}>
-        <input
-          {...register("schoolId")}
-          placeholder="e.g. GREENWOOD-8392"
-          className={inputCls(!!errors.schoolId)}
-        />
-      </Field>
-
-      <button
-        type="submit"
-        disabled={mutation.isPending}
-        className="w-full rounded-[var(--edu-radius)] bg-edu-moss px-4 py-2.5 text-sm font-semibold text-white hover:bg-edu-moss-dark disabled:opacity-60 transition-colors"
-      >
-        {mutation.isPending ? "Sending code…" : "Send Code"}
-      </button>
-    </form>
-  );
-}
-
-function VerifyStep({
-  email,
-  schoolId,
-  onSuccess,
-  onBack,
-  onError,
-}: {
-  email: string;
-  schoolId: string;
-  onSuccess: (accessToken: string, refreshToken: string) => void;
-  onBack: () => void;
-  onError: (msg: string) => void;
-}) {
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<OrgOtpVerifyInput>({
-    resolver: zodResolver(orgOtpVerifySchema),
-    defaultValues: { email, schoolId },
-  });
-
-  const mutation = useMutation({
-    mutationFn: orgApi.verifyOtp,
-    onSuccess: (data) => onSuccess(data.tokens.accessToken, data.tokens.refreshToken),
-    onError: (err: Error) => onError(err.message || "Invalid code. Please try again."),
-  });
-
-  return (
-    <form
-      onSubmit={handleSubmit((data) => mutation.mutate(data))}
-      className="rounded-[var(--edu-radius)] border border-edu-line bg-white p-6 space-y-4"
-      style={{ boxShadow: "var(--edu-shadow)" }}
-    >
-      <input type="hidden" {...register("email")} />
-      <input type="hidden" {...register("schoolId")} />
-
-      <Field label="One-Time Code" error={errors.otp?.message}>
-        <input
-          {...register("otp")}
-          placeholder="000000"
-          maxLength={6}
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          className={`${inputCls(!!errors.otp)} text-center tracking-widest text-lg font-ibm-plex-mono`}
-        />
-      </Field>
-
-      <button
-        type="submit"
-        disabled={mutation.isPending}
-        className="w-full rounded-[var(--edu-radius)] bg-edu-moss px-4 py-2.5 text-sm font-semibold text-white hover:bg-edu-moss-dark disabled:opacity-60 transition-colors"
-      >
-        {mutation.isPending ? "Verifying…" : "Verify & Sign In"}
-      </button>
-
-      <button
-        type="button"
-        onClick={onBack}
-        className="w-full text-sm text-edu-blue-grey hover:text-edu-ink transition-colors"
-      >
-        ← Back
-      </button>
-    </form>
   );
 }
 

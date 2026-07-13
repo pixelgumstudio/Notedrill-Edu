@@ -13,7 +13,10 @@ interface ProtectedRouteProps {
 const LOGIN_PATHS: Record<ProtectedRouteProps["requiredRole"], string> = {
   org_admin: "/org/login",
   student: "/student/login",
-  // Superadmins authenticate through the same org OTP flow as org admins.
+  // No superadmin auth exists on backend.notedrill.com — this section
+  // (src/app/(admin)/notedrill/*, an internal B2C panel unrelated to the
+  // Edu product) has no login path to send anyone to; kept only so its
+  // ProtectedRoute usage still type-checks.
   superadmin: "/org/login",
 };
 
@@ -29,15 +32,12 @@ const LOGIN_PATHS: Record<ProtectedRouteProps["requiredRole"], string> = {
  *   3. If allowed: render children. If not: router.replace(loginPath).
  */
 export default function ProtectedRoute({ requiredRole, children }: ProtectedRouteProps) {
-  const { isHydrated, isOrgAdmin, isStudent, isSuperAdmin } = useAuth();
+  const { isHydrated, isOrgAdmin, isStudent } = useAuth();
   const router = useRouter();
 
+  // No superadmin role exists in this backend's auth model — always denied.
   const allowed =
-    requiredRole === "org_admin"
-      ? isOrgAdmin
-      : requiredRole === "student"
-        ? isStudent
-        : isSuperAdmin;
+    requiredRole === "org_admin" ? isOrgAdmin : requiredRole === "student" ? isStudent : false;
 
   useEffect(() => {
     if (!isHydrated) return;

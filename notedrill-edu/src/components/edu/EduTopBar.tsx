@@ -6,17 +6,17 @@ import AvatarInitials from "./AvatarInitials";
 import { useAuth } from "@/context/AuthContext";
 
 interface EduTopBarProps {
-  /** Explicit display name override. Falls back to username from JWT. */
+  /** Explicit display name override. Falls back to the signed-in user's stored name. */
   userName?: string;
   orgName?: string;
   children?: React.ReactNode;
 }
 
 export default function EduTopBar({ userName, orgName, children }: EduTopBarProps) {
-  const { username, email } = useAuth();
+  const { name, email } = useAuth();
 
-  // Preference order: explicit prop → JWT username → JWT email → "Admin"
-  const displayName = userName || username || email || "Admin";
+  // Preference order: explicit prop → stored name → stored email → "Admin"
+  const displayName = userName || name || email || "Admin";
 
   return (
     <header

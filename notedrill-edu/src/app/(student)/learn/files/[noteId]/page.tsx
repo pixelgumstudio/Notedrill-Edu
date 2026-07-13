@@ -7,12 +7,14 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import TabBar from "@/components/edu/TabBar";
 import SummaryBox from "@/components/edu/SummaryBox";
 import ScorePill from "@/components/edu/ScorePill";
+import SourceViewer from "@/components/edu/SourceViewer";
 import { studentApi } from "@/lib/student-api";
 import { useAuth } from "@/context/AuthContext";
-import type { StudentFile, StudentQuizAttempt, StudentFlashcardSession } from "@/types/edu";
+import type { StudentNoteDetail, StudentQuizAttempt, StudentFlashcardSet } from "@/types/edu";
 
 const FILE_TABS = [
-  { id: "summary",    label: "Summary",    icon: "📋" },
+  { id: "notes",      label: "Notes",       icon: "📓" },
+  { id: "source",     label: "Original Source", icon: "📄" },
   { id: "quiz",       label: "Quiz",        icon: "📝" },
   { id: "flashcards", label: "Flashcards",  icon: "🗂" },
 ];
@@ -22,45 +24,50 @@ export default function FileDetailPage() {
   const router = useRouter();
   const { studentToken } = useAuth();
 
-  const [activeTab, setActiveTab] = useState("summary");
+  const [activeTab, setActiveTab] = useState("notes");
   const [genQuizOpen, setGenQuizOpen] = useState(false);
   const [genFlashOpen, setGenFlashOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [quizCount, setQuizCount] = useState("20");
+  const [quizTimeLimit, setQuizTimeLimit] = useState("15");
   const [flashCount, setFlashCount] = useState("20");
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2600); };
 
-  const { data: file, isLoading: fileLoading } = useQuery<StudentFile>({
+  const { data: file, isLoading: fileLoading } = useQuery<StudentNoteDetail>({
     queryKey: ["student-file", noteId],
     queryFn: () => studentApi.getFile(studentToken ?? "", noteId),
     enabled: !!studentToken && !!noteId,
     staleTime: 60_000,
   });
 
-  const { data: quizHistory = [], isLoading: quizLoading } = useQuery<StudentQuizAttempt[]>({
+  const { data: quizData, isLoading: quizLoading } = useQuery<{ items: StudentQuizAttempt[] }>({
     queryKey: ["student-quiz-history", noteId],
     queryFn: () => studentApi.getQuizHistory(studentToken ?? "", noteId),
     enabled: !!studentToken && !!noteId && activeTab === "quiz",
     staleTime: 30_000,
   });
 
-  const { data: flashHistory = [], isLoading: flashLoading } = useQuery<StudentFlashcardSession[]>({
+  const { data: flashData, isLoading: flashLoading } = useQuery<{ items: StudentFlashcardSet[] }>({
     queryKey: ["student-flash-history", noteId],
     queryFn: () => studentApi.getFlashcardHistory(studentToken ?? "", noteId),
     enabled: !!studentToken && !!noteId && activeTab === "flashcards",
     staleTime: 30_000,
   });
 
+  const quizHistory = quizData?.items ?? [];
+  const flashHistory = flashData?.items ?? [];
+
   const generateQuizMutation = useMutation({
     mutationFn: () =>
-      studentApi.generateQuiz(studentToken ?? "", noteId, {
-        questionCount: Number(quizCount),
-        difficulty: "medium",
-      }),
+      studentApi.generateQuiz(studentToken ?? "", noteId, Number(quizCount), Number(quizTimeLimit)),
     onSuccess: (quiz) => {
       setGenQuizOpen(false);
-      router.push(`/learn/files/${noteId}/quiz?quizId=${quiz._id}`);
+      // There's no GET-by-id for a single attempt on this backend, so the
+      // full question set (only ever returned by generate/submit) has to be
+      // carried through sessionStorage to the taking page.
+      sessionStorage.setItem(`student-quiz-attempt-${quiz.id}`, JSON.stringify(quiz));
+      router.push(`/learn/files/${noteId}/quiz?attemptId=${quiz.id}`);
     },
     onError: (err: Error) => {
       showToast(err.message || "Failed to generate quiz. Please try again.");
@@ -69,20 +76,17 @@ export default function FileDetailPage() {
 
   const generateFlashMutation = useMutation({
     mutationFn: () =>
-      studentApi.generateFlashcards(studentToken ?? "", noteId, {
-        cardCount: Number(flashCount),
-        difficulty: "medium",
-      }),
+      studentApi.generateFlashcards(studentToken ?? "", noteId, Number(flashCount)),
     onSuccess: (set) => {
       setGenFlashOpen(false);
-      router.push(`/learn/files/${noteId}/flashcards?setId=${set._id}`);
+      router.push(`/learn/files/${noteId}/flashcards?setId=${set.id}`);
     },
     onError: (err: Error) => {
       showToast(err.message || "Failed to generate flashcards. Please try again.");
     },
   });
 
-  const bestScore = quizHistory.length > 0 ? Math.max(...quizHistory.map((q) => q.score)) : 0;
+  const bestScore = file?.stats.bestScorePercentage ?? 0;
 
   return (
     <>
@@ -94,7 +98,7 @@ export default function FileDetailPage() {
           <h1 className="font-source-serif text-xl text-edu-moss-dark">{file?.title ?? "File"}</h1>
         )}
         <p className="mt-0.5 text-sm text-edu-blue-grey">
-          {fileLoading ? "Loading…" : `Uploaded ${file?.uploadedAt ?? ""}`}
+          {fileLoading ? "Loading…" : `Uploaded ${file ? new Date(file.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""}`}
         </p>
       </div>
 
@@ -106,8 +110,8 @@ export default function FileDetailPage() {
         {/* Tab bar */}
         <TabBar tabs={FILE_TABS} activeTab={activeTab} onTabChange={setActiveTab} className="mb-5" />
 
-        {/* Summary tab */}
-        {activeTab === "summary" && (
+        {/* Notes tab — the AI-enhanced study notes generated from this file */}
+        {activeTab === "notes" && (
           fileLoading ? (
             <div className="space-y-3">
               <div className="h-32 animate-pulse rounded-xl bg-edu-line" />
@@ -115,9 +119,8 @@ export default function FileDetailPage() {
             </div>
           ) : (
             <SummaryBox
-              title={file?.summaryTitle ?? file?.title ?? "Summary"}
-              body={file?.content || file?.summary || "Summary not yet generated for this file."}
-              bodyIsHtml={!!file?.content}
+              title={file?.title ?? "Notes"}
+              body={file?.summary || "Notes are still being generated for this file — check back in a moment."}
               stats={[
                 { label: "Quizzes taken", value: quizHistory.length },
                 { label: "Best score", value: bestScore > 0 ? `${bestScore}%` : "—" },
@@ -125,6 +128,15 @@ export default function FileDetailPage() {
               ]}
               variant="student"
             />
+          )
+        )}
+
+        {/* Original Source tab */}
+        {activeTab === "source" && (
+          fileLoading ? (
+            <div className="h-64 animate-pulse rounded-xl bg-edu-line" />
+          ) : (
+            file && <SourceViewer note={file} />
           )
         )}
 
@@ -160,25 +172,40 @@ export default function FileDetailPage() {
               ) : quizHistory.length === 0 ? (
                 <div className="py-10 text-center text-sm text-edu-blue-grey">No quizzes yet. Generate your first one above!</div>
               ) : (
-                quizHistory.map((attempt) => (
-                  <Link
-                    key={attempt.id}
-                    href={`/learn/files/${noteId}/quiz?quizId=${attempt.id}`}
-                    className="flex cursor-pointer items-center justify-between border-b border-edu-line px-5 py-3.5 last:border-b-0 hover:bg-edu-paper-2 transition-colors"
-                  >
+                quizHistory.map((attempt) => {
+                  const row = (
                     <div className="flex items-center gap-3">
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-edu-paper-2 text-sm">📝</div>
                       <div>
                         <p className="text-[13.5px] font-semibold text-edu-ink">Quiz attempt — {attempt.questionCount} questions</p>
-                        <p className="mt-0.5 text-[11.5px] text-edu-blue-grey">{attempt.date} · {attempt.time}</p>
+                        <p className="mt-0.5 text-[11.5px] text-edu-blue-grey">
+                          {new Date(attempt.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                          {attempt.status === "in_progress" && " · in progress — start a new quiz to continue practicing"}
+                        </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2.5">
-                      <ScorePill score={attempt.score} />
-                      <span className="text-edu-blue-grey">›</span>
+                  );
+                  // Only reachable within the same browser session that generated/completed
+                  // it — there's no fetch-by-id endpoint, so once sessionStorage is gone
+                  // (new tab, reload, another day) there's nothing to show or resume.
+                  return attempt.status === "completed" ? (
+                    <Link
+                      key={attempt.id}
+                      href={`/learn/files/${noteId}/quiz/results?attemptId=${attempt.id}`}
+                      className="flex cursor-pointer items-center justify-between border-b border-edu-line px-5 py-3.5 last:border-b-0 hover:bg-edu-paper-2 transition-colors"
+                    >
+                      {row}
+                      <div className="flex items-center gap-2.5">
+                        <ScorePill score={attempt.scorePercentage} />
+                        <span className="text-edu-blue-grey">›</span>
+                      </div>
+                    </Link>
+                  ) : (
+                    <div key={attempt.id} className="flex items-center justify-between border-b border-edu-line px-5 py-3.5 last:border-b-0 opacity-70">
+                      {row}
                     </div>
-                  </Link>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -226,7 +253,9 @@ export default function FileDetailPage() {
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-edu-paper-2 text-sm">🗂</div>
                       <div>
                         <p className="text-[13.5px] font-semibold text-edu-ink">Revision cards — {session.cardCount} cards</p>
-                        <p className="mt-0.5 text-[11.5px] text-edu-blue-grey">{session.date}</p>
+                        <p className="mt-0.5 text-[11.5px] text-edu-blue-grey">
+                          {new Date(session.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </p>
                       </div>
                     </div>
                     <span className="text-edu-blue-grey">›</span>
@@ -244,10 +273,16 @@ export default function FileDetailPage() {
           <div className="w-full max-w-[440px] rounded-xl bg-white p-7" style={{ boxShadow: "0 10px 40px rgba(0,0,0,0.25)" }}>
             <h3 className="mb-2 font-source-serif text-lg text-edu-ink">Generate a quiz</h3>
             <p className="mb-5 text-sm text-edu-blue-grey">Based on <b className="text-edu-ink">{file?.title}</b>. This will be your own quiz to practice with.</p>
-            <div className="mb-5">
+            <div className="mb-3">
               <label className="mb-1.5 block text-[12.5px] font-semibold text-edu-ink">Number of questions</label>
               <select value={quizCount} onChange={(e) => setQuizCount(e.target.value)} className="w-full rounded-lg border-[1.5px] border-edu-line bg-edu-paper p-2.5 text-sm focus:border-edu-moss focus:outline-none">
                 <option>10</option><option>20</option><option>30</option>
+              </select>
+            </div>
+            <div className="mb-5">
+              <label className="mb-1.5 block text-[12.5px] font-semibold text-edu-ink">Time limit (minutes)</label>
+              <select value={quizTimeLimit} onChange={(e) => setQuizTimeLimit(e.target.value)} className="w-full rounded-lg border-[1.5px] border-edu-line bg-edu-paper p-2.5 text-sm focus:border-edu-moss focus:outline-none">
+                <option>5</option><option>10</option><option>15</option><option>30</option>
               </select>
             </div>
             <div className="flex gap-2.5">

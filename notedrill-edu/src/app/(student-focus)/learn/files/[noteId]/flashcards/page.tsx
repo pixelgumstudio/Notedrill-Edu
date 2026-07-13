@@ -8,15 +8,14 @@ import FlashcardFlip from "@/components/edu/FlashcardFlip";
 import EduBackButton from "@/components/edu/EduBackButton";
 import { studentApi } from "@/lib/student-api";
 import { useAuth } from "@/context/AuthContext";
-import type { FlashCard } from "@/types/edu";
-import type { AdminGeneratedFlashcardSet } from "@/types/edu";
+import type { FlashCard, StudentFlashcardSet } from "@/types/edu";
 
-/** Map backend cards ({ front, back }) to the shape FlashcardFlip expects. */
-function mapCards(set: AdminGeneratedFlashcardSet): FlashCard[] {
+/** Map backend cards ({ question, answer }) to the shape FlashcardFlip expects. */
+function mapCards(set: StudentFlashcardSet): FlashCard[] {
   return set.cards.map((c, i) => ({
     id: `card-${i}`,
-    question: c.front,
-    answer: c.back,
+    question: c.question,
+    answer: c.answer,
   }));
 }
 
@@ -30,12 +29,15 @@ export default function FlashcardsPage() {
   const [completed, setCompleted] = useState<Set<number>>(new Set());
   const [done, setDone] = useState(false);
 
-  const { data: flashcardSet, isLoading, isError } = useQuery<AdminGeneratedFlashcardSet>({
-    queryKey: ["student-flashcard-set", setId],
-    queryFn: () => studentApi.getFlashcardSet(studentToken ?? "", setId),
-    enabled: !!studentToken && !!setId,
-    staleTime: Infinity,
+  // There's no single-set-by-id endpoint — the history list already returns
+  // full `cards[]` per entry, so find this set within it.
+  const { data: historyData, isLoading, isError } = useQuery({
+    queryKey: ["student-flash-history", noteId],
+    queryFn: () => studentApi.getFlashcardHistory(studentToken ?? "", noteId),
+    enabled: !!studentToken && !!noteId && !!setId,
+    staleTime: 30_000,
   });
+  const flashcardSet = historyData?.items.find((s) => s.id === setId);
 
   const cards: FlashCard[] = flashcardSet ? mapCards(flashcardSet) : [];
   const total = cards.length;
@@ -119,7 +121,7 @@ export default function FlashcardsPage() {
       {/* Topbar */}
       <div className="flex items-center justify-between border-b border-edu-line bg-white px-5 py-4 md:px-8">
         <div>
-          <h1 className="font-source-serif text-[18px] text-edu-moss-dark">{flashcardSet.title}</h1>
+          <h1 className="font-source-serif text-[18px] text-edu-moss-dark">{flashcardSet.noteTitle}</h1>
           <p className="mt-0.5 text-sm text-edu-blue-grey">Flashcard study</p>
         </div>
         <EduBackButton href={`/learn/files/${noteId}`} label="Exit" />

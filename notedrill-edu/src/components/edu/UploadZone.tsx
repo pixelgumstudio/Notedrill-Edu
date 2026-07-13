@@ -5,7 +5,7 @@ import React, { useState, useRef } from "react";
 type SourceTab = "pdf" | "text" | "youtube" | "image";
 
 interface UploadZoneProps {
-  onUpload?: (file: File | null, source: SourceTab, text?: string) => void;
+  onUpload?: (file: File | null, source: SourceTab, title: string, text?: string) => void;
 }
 
 const sourceTabs: { id: SourceTab; label: string }[] = [
@@ -21,6 +21,7 @@ export default function UploadZone({ onUpload }: UploadZoneProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [textContent, setTextContent] = useState("");
+  const [title, setTitle] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -38,11 +39,13 @@ export default function UploadZone({ onUpload }: UploadZoneProps) {
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSelectedFile(e.target.files?.[0] ?? null);
+    const file = e.target.files?.[0] ?? null;
+    setSelectedFile(file);
+    if (file && !title) setTitle(file.name.replace(/\.[^.]+$/, ""));
   };
 
   const handleSubmit = () => {
-    onUpload?.(selectedFile, activeSource, textContent || youtubeUrl);
+    onUpload?.(selectedFile, activeSource, title, textContent || youtubeUrl);
   };
 
   return (
@@ -54,6 +57,18 @@ export default function UploadZone({ onUpload }: UploadZoneProps) {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {/* Title */}
+      <div className="mx-auto mb-5 max-w-sm text-left">
+        <label className="mb-1.5 block text-sm font-semibold text-edu-ink">Title</label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="e.g. Basic Nervous System"
+          className="w-full rounded-lg border-[1.5px] border-edu-line bg-white p-2.5 text-sm text-edu-ink focus:border-edu-moss focus:outline-none"
+        />
+      </div>
+
       {/* Source selector tabs */}
       <div className="mb-5 flex flex-wrap justify-center gap-2">
         {sourceTabs.map(({ id, label }) => (
@@ -132,8 +147,9 @@ export default function UploadZone({ onUpload }: UploadZoneProps) {
 
       {/* CTA button */}
       <button
-        className="mt-5 rounded-lg bg-edu-moss px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-edu-moss-dark"
+        className="mt-5 rounded-lg bg-edu-moss px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-edu-moss-dark disabled:opacity-50"
         onClick={handleSubmit}
+        disabled={!title.trim()}
       >
         Upload &amp; generate summary
       </button>

@@ -7,24 +7,18 @@ import EmptyState from "./EmptyState";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface FlashcardViewerProps {
-  flashcardSetId: string;
   cards: AdminFlashcard[];
   onCardsChange: (updated: AdminFlashcard[]) => void;
-  onSaveCard?: (
-    setId: string,
-    cardId: string,
-    data: { front: string; back: string },
-  ) => Promise<void>;
   onToast: (msg: string) => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
+// Edits are local-only — there's no card-update endpoint on the backend, so
+// nothing here is persisted server-side (a page refresh reverts it).
 
 export default function FlashcardViewer({
-  flashcardSetId,
   cards,
   onCardsChange,
-  onSaveCard,
   onToast,
 }: FlashcardViewerProps) {
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -70,8 +64,8 @@ export default function FlashcardViewer({
 
   function openEdit() {
     if (!card) return;
-    setDraftFront(card.front);
-    setDraftBack(card.back);
+    setDraftFront(card.question);
+    setDraftBack(card.answer);
     setIsEditing(true);
     setIsFlipped(false);
   }
@@ -80,25 +74,16 @@ export default function FlashcardViewer({
     setIsEditing(false);
   }
 
-  async function saveEdit() {
+  function saveEdit() {
     if (!card) return;
     setIsSaving(true);
-    try {
-      const updated = cards.map((c, i) =>
-        i === currentIdx ? { ...c, front: draftFront, back: draftBack } : c,
-      );
-      onCardsChange(updated);
-      if (onSaveCard && card._id) {
-        await onSaveCard(flashcardSetId, card._id, { front: draftFront, back: draftBack });
-      }
-      onToast("Card updated");
-      setIsEditing(false);
-    } catch {
-      onToast("Failed to save — changes kept locally");
-      setIsEditing(false);
-    } finally {
-      setIsSaving(false);
-    }
+    const updated = cards.map((c, i) =>
+      i === currentIdx ? { ...c, question: draftFront, answer: draftBack } : c,
+    );
+    onCardsChange(updated);
+    onToast("Card updated (this session only)");
+    setIsEditing(false);
+    setIsSaving(false);
   }
 
   // ── Keyboard navigation ────────────────────────────────────────────────────
@@ -243,7 +228,7 @@ export default function FlashcardViewer({
                 Question
               </p>
               <p className="font-source-serif text-lg leading-relaxed text-edu-moss-dark">
-                {card?.front}
+                {card?.question}
               </p>
               {/* Tap hint — below the text, always visible */}
               <p className="mt-6 text-[11px] text-edu-blue-grey">
@@ -257,7 +242,7 @@ export default function FlashcardViewer({
                 Answer
               </p>
               <p className="text-base leading-relaxed text-edu-ink">
-                {card?.back}
+                {card?.answer}
               </p>
               <p className="mt-6 text-[11px] text-edu-blue-grey">
                 Click or press Space to flip back

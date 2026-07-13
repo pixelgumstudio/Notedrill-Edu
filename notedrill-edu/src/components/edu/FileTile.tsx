@@ -1,10 +1,10 @@
 import React from "react";
 import Link from "next/link";
-import type { StudentFile } from "@/types/edu";
+import type { StudentNoteSummary } from "@/types/edu";
 import FileTypeBadge from "./FileTypeBadge";
 
 interface FileTileProps {
-  file: StudentFile;
+  file: StudentNoteSummary;
   href: string;
 }
 
@@ -13,6 +13,7 @@ const typeLabel: Record<string, string> = {
   youtube: "YouTube",
   text: "Text",
   image: "Image",
+  audio: "Audio",
 };
 
 export default function FileTile({ file, href }: FileTileProps) {
@@ -23,9 +24,9 @@ export default function FileTile({ file, href }: FileTileProps) {
       style={{ boxShadow: "var(--edu-shadow)" }}
     >
       <div className="mb-3 flex items-start justify-between">
-        <FileTypeBadge type={file.type} size="sm" />
+        <FileTypeBadge type={file.sourceType} size="sm" />
         <span className="rounded-md bg-edu-paper-2 px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-edu-blue-grey">
-          {typeLabel[file.type] ?? "File"}
+          {typeLabel[file.sourceType] ?? "File"}
         </span>
       </div>
       <h4 className="mb-2 font-source-serif text-[14.5px] font-semibold leading-tight text-edu-moss-dark">
@@ -33,7 +34,7 @@ export default function FileTile({ file, href }: FileTileProps) {
       </h4>
       <div className="flex gap-3.5 text-[11.5px] text-edu-blue-grey">
         <span>
-          {file.quizCount} {file.quizCount === 1 ? "quiz" : "quizzes"} taken
+          {file.quizCount} {file.quizCount === 1 ? "quiz" : "quizzes"}
         </span>
         <span>
           {file.flashcardSetCount} {file.flashcardSetCount === 1 ? "set" : "sets"}

@@ -5,20 +5,20 @@ import { useQuery } from "@tanstack/react-query";
 import FileTile from "@/components/edu/FileTile";
 import { studentApi } from "@/lib/student-api";
 import { useAuth } from "@/context/AuthContext";
-import type { StudentFile } from "@/types/edu";
+import type { StudentNoteSummary } from "@/types/edu";
 
 export default function FilesPage() {
   const [search, setSearch] = useState("");
   const { studentToken } = useAuth();
 
-  const { data: files, isLoading } = useQuery<StudentFile[]>({
+  const { data, isLoading } = useQuery<{ items: StudentNoteSummary[] }>({
     queryKey: ["student-files"],
-    queryFn: () => studentApi.getFiles(studentToken ?? ""),
+    queryFn: () => studentApi.getFiles(studentToken ?? "", { limit: 100 }),
     enabled: !!studentToken,
     staleTime: 60_000,
   });
 
-  const displayedFiles = (files ?? []).filter((f) =>
+  const displayedFiles = (data?.items ?? []).filter((f) =>
     f.title.toLowerCase().includes(search.toLowerCase())
   );
 

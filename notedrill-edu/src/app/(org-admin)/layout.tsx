@@ -29,10 +29,10 @@ const ibmPlexMono = IBM_Plex_Mono({
 
 function OrgAdminLayoutInner({ children }: { children: React.ReactNode }) {
   const { toggleMobileSidebar } = useSidebar();
-  const { username, email } = useAuth();
+  const { name, email } = useAuth();
 
-  // Best display name from JWT: username preferred, email as fallback
-  const displayName = username || email || "Admin";
+  // Best display name: stored name preferred, email as fallback
+  const displayName = name || email || "Admin";
 
   return (
     <div

@@ -8,8 +8,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { sendOTPSchema, verifyLoginOTPSchema } from "@notedrill/validation";
 import type { SendOTPInput, VerifyLoginOTPInput } from "@notedrill/validation";
-import { orgApi } from "@/lib/org-api";
+import { studentApi } from "@/lib/student-api";
 import { useAuth } from "@/context/AuthContext";
+import type { AuthUser } from "@/types/edu";
 import BrandMark from "@/components/edu/BrandMark";
 import Toast from "@/components/edu/Toast";
 
@@ -90,8 +91,8 @@ function StudentLoginPageInner() {
         ) : (
           <VerifyStep
             email={prefillEmail}
-            onSuccess={(accessToken, refreshToken) => {
-              loginAsStudent(accessToken, refreshToken);
+            onSuccess={(token, user) => {
+              loginAsStudent(token, user);
               router.push("/learn/files");
             }}
             onBack={() => setStep("request")}
@@ -124,7 +125,7 @@ function RequestStep({
   } = useForm<SendOTPInput>({ resolver: zodResolver(sendOTPSchema) });
 
   const mutation = useMutation({
-    mutationFn: (data: SendOTPInput) => orgApi.studentRequestOtp({ email: data.email }),
+    mutationFn: (data: SendOTPInput) => studentApi.requestOtp(data.email),
     onSuccess: (_, vars) => onSuccess(vars.email),
     onError: (err: Error) => onError(err.message || "Failed to send code. Please try again."),
   });
@@ -166,7 +167,7 @@ function VerifyStep({
   onError,
 }: {
   email: string;
-  onSuccess: (accessToken: string, refreshToken: string) => void;
+  onSuccess: (token: string, user: AuthUser) => void;
   onBack: () => void;
   onError: (msg: string) => void;
 }) {
@@ -180,9 +181,8 @@ function VerifyStep({
   });
 
   const mutation = useMutation({
-    mutationFn: (data: VerifyLoginOTPInput) =>
-      orgApi.studentVerifyOtp({ email: data.email, otp: data.otp }),
-    onSuccess: (data) => onSuccess(data.tokens.accessToken, data.tokens.refreshToken),
+    mutationFn: (data: VerifyLoginOTPInput) => studentApi.verifyOtp(data.email, data.otp),
+    onSuccess: (data) => onSuccess(data.token, data.user),
     onError: (err: Error) => onError(err.message || "Invalid code. Please try again."),
   });
 

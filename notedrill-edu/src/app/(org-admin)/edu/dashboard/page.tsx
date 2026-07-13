@@ -9,42 +9,44 @@ import SectionEyebrow from "@/components/edu/SectionEyebrow";
 import EmptyState from "@/components/edu/EmptyState";
 import { orgApi } from "@/lib/org-api";
 import { useAuth } from "@/context/AuthContext";
-import type { OrgStudent, OrgDashboardMetrics } from "@/types/edu";
+import type { OrgStudent, OrgDashboardStats } from "@/types/edu";
 
 export default function DashboardPage() {
   const [addStudentOpen, setAddStudentOpen] = useState(false);
+  const [addName, setAddName] = useState("");
   const [addEmail, setAddEmail] = useState("");
-  const [addFirstName, setAddFirstName] = useState("");
+  const [addPhone, setAddPhone] = useState("");
   const [toast, setToast] = useState<string | null>(null);
 
   const { orgToken } = useAuth();
   const queryClient = useQueryClient();
 
-  const { data: metrics, isLoading: metricsLoading } = useQuery<OrgDashboardMetrics>({
-    queryKey: ["org-metrics"],
-    queryFn: () => orgApi.getDashboardMetrics(orgToken ?? ""),
+  const { data: stats, isLoading: statsLoading } = useQuery<OrgDashboardStats>({
+    queryKey: ["org-dashboard-stats"],
+    queryFn: () => orgApi.getDashboardStats(orgToken ?? ""),
     enabled: !!orgToken,
     staleTime: 60_000,
   });
 
-  const { data: students, isLoading: studentsLoading } = useQuery<OrgStudent[]>({
+  const { data: studentsData, isLoading: studentsLoading } = useQuery<{ items: OrgStudent[] }>({
     queryKey: ["org-students"],
-    queryFn: () => orgApi.getOrgStudents(orgToken ?? ""),
+    queryFn: () => orgApi.getOrgStudents(orgToken ?? "", { limit: 6 }),
     enabled: !!orgToken,
     staleTime: 60_000,
   });
 
   const addStudentMutation = useMutation({
-    mutationFn: (data: { email: string; firstName: string }) => orgApi.addOrgStudent(orgToken ?? "", data),
+    mutationFn: (data: { name: string; email: string; phone: string }) => orgApi.addOrgStudent(orgToken ?? "", data),
     onSuccess: () => {
       setAddStudentOpen(false);
+      setAddName("");
       setAddEmail("");
-      setAddFirstName("");
-      showToast("Student invited — login code sent to their email");
+      setAddPhone("");
+      showToast("Student added");
       queryClient.invalidateQueries({ queryKey: ["org-students"] });
-      queryClient.invalidateQueries({ queryKey: ["org-metrics"] });
+      queryClient.invalidateQueries({ queryKey: ["org-dashboard-stats"] });
     },
-    onError: (err: Error) => showToast(err.message || "Failed to send invite"),
+    onError: (err: Error) => showToast(err.message || "Failed to add student"),
   });
 
   const showToast = (msg: string) => {
@@ -52,13 +54,8 @@ export default function DashboardPage() {
     setTimeout(() => setToast(null), 2600);
   };
 
-  const copySchoolId = () => {
-    if (!metrics?.schoolId) return;
-    navigator.clipboard.writeText(metrics.schoolId).then(() => showToast("School ID copied"));
-  };
-
-  const m = metrics;
-  const s = students ?? [];
+  const s = stats;
+  const students = studentsData?.items ?? [];
 
   return (
     <>
@@ -68,15 +65,6 @@ export default function DashboardPage() {
           <SectionEyebrow className="mb-1">For school management</SectionEyebrow>
           <h1 className="font-source-serif text-[22px] text-edu-moss-dark">Dashboard</h1>
           <p className="mt-0.5 text-sm text-edu-blue-grey">Overview of your school&apos;s NoteDrill activity</p>
-          {m?.schoolId && (
-            <button
-              onClick={copySchoolId}
-              title="Click to copy"
-              className="mt-2 inline-flex items-center gap-1.5 rounded-full border-[1.5px] border-edu-line bg-edu-paper-2 px-3 py-1 text-[12px] font-bold text-edu-moss-dark transition-colors hover:border-edu-moss"
-            >
-              School ID: {m.schoolId} <span aria-hidden="true">⧉</span>
-            </button>
-          )}
         </div>
         <div className="flex shrink-0 gap-2.5">
           <Link
@@ -96,30 +84,30 @@ export default function DashboardPage() {
 
       <div className="px-6 py-7 md:px-8">
         {/* Metrics grid */}
-        {metricsLoading ? (
+        {statsLoading ? (
           <div className="mb-7 grid grid-cols-2 gap-3.5 md:grid-cols-3 xl:grid-cols-6">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="h-24 animate-pulse rounded-xl bg-edu-line" />
             ))}
           </div>
-        ) : m ? (
+        ) : s ? (
           <div className="mb-7 grid grid-cols-2 gap-3.5 md:grid-cols-3 xl:grid-cols-6">
-            <MetricCard label="Students" value={`${m.studentCount}`} delta={{ value: `of ${m.seatLimit} seats used`, positive: true }} />
-            <MetricCard label="Active students" value={`${m.activeStudents}`} delta={{ value: "practiced in last 7 days", positive: true }} />
-            <MetricCard label="Quizzes taken" value={(m.quizzesTaken ?? 0).toLocaleString()} delta={{ value: "across all students", positive: true }} />
-            <MetricCard label="Flashcard sessions" value={`${m.flashcardSessions ?? 0}`} delta={{ value: "across all students", positive: true }} />
-            <MetricCard label="Average score" value={`${m.avgScore ?? 0}%`} delta={{ value: "org-wide quiz average", positive: true }} />
+            <MetricCard label="Students" value={`${s.students.total}`} delta={{ value: `of ${s.students.seatLimit} seats used`, positive: true }} />
+            <MetricCard label="Active this week" value={`${s.students.activeThisWeek}`} delta={{ value: "practiced in last 7 days", positive: true }} />
+            <MetricCard label="Quizzes taken" value={s.quizzes.taken.toLocaleString()} delta={{ value: "across all students", positive: true }} />
+            <MetricCard label="Flashcard sessions" value={`${s.flashcards.sessions}`} delta={{ value: "across all students", positive: true }} />
+            <MetricCard label="Average score" value={`${s.quizzes.averageScore ?? 0}%`} delta={{ value: "org-wide quiz average", positive: true }} />
             <MetricCard
-              label="Billing status"
-              value={m.billingAmount}
-              delta={{ value: m.billingStatus, positive: false }}
+              label="Plan"
+              value={s.billing.plan}
+              delta={{ value: `${s.billing.seatsUsed}/${s.billing.seatLimit} seats used`, positive: false }}
               className="bg-edu-gold-light border-[#E7C691]"
             />
           </div>
         ) : null}
 
         {/* Getting started — shown until the school has added its first student */}
-        {!studentsLoading && s.length === 0 && (
+        {!studentsLoading && students.length === 0 && (
           <div
             className="mb-7 overflow-hidden rounded-xl border border-edu-line bg-white p-6 md:p-7"
             style={{ boxShadow: "var(--edu-shadow)" }}
@@ -163,7 +151,7 @@ export default function DashboardPage() {
             <div>
               <h3 className="font-source-serif text-[16.5px] text-edu-moss-dark">Students</h3>
               <p className="mt-0.5 text-[12.5px] text-edu-blue-grey">
-                {studentsLoading ? "Loading…" : `${s.length} students · showing top 6`}
+                {studentsLoading ? "Loading…" : `${students.length} students · showing top 6`}
               </p>
             </div>
             <Link
@@ -179,7 +167,7 @@ export default function DashboardPage() {
                 <div key={i} className="h-12 animate-pulse rounded bg-edu-line" />
               ))}
             </div>
-          ) : s.length === 0 ? (
+          ) : students.length === 0 ? (
             <EmptyState
               mark="S"
               heading="No students yet"
@@ -187,7 +175,7 @@ export default function DashboardPage() {
               className="py-10"
             />
           ) : (
-            <StudentsTable students={s.slice(0, 6)} showActions={false} />
+            <StudentsTable students={students.slice(0, 6)} showActions={false} />
           )}
         </div>
       </div>
@@ -204,16 +192,16 @@ export default function DashboardPage() {
               They&apos;ll log in using a one-time code sent to this email — no password needed.
             </p>
             <div className="mb-4">
-              <label className="mb-1.5 block text-[12.5px] font-semibold text-edu-ink">First name</label>
+              <label className="mb-1.5 block text-[12.5px] font-semibold text-edu-ink">Full name</label>
               <input
                 type="text"
-                value={addFirstName}
-                onChange={(e) => setAddFirstName(e.target.value)}
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
                 className="w-full rounded-lg border-[1.5px] border-edu-line bg-edu-paper p-2.5 text-sm focus:border-edu-moss focus:outline-none"
-                placeholder="Jane"
+                placeholder="Jane Doe"
               />
             </div>
-            <div className="mb-5">
+            <div className="mb-4">
               <label className="mb-1.5 block text-[12.5px] font-semibold text-edu-ink">Email address</label>
               <input
                 type="email"
@@ -223,19 +211,29 @@ export default function DashboardPage() {
                 placeholder="student@email.com"
               />
             </div>
+            <div className="mb-5">
+              <label className="mb-1.5 block text-[12.5px] font-semibold text-edu-ink">Phone number</label>
+              <input
+                type="tel"
+                value={addPhone}
+                onChange={(e) => setAddPhone(e.target.value)}
+                className="w-full rounded-lg border-[1.5px] border-edu-line bg-edu-paper p-2.5 text-sm focus:border-edu-moss focus:outline-none"
+                placeholder="+2348012345678"
+              />
+            </div>
             <div className="flex gap-2.5">
               <button
                 className="flex-1 rounded-lg border-[1.5px] border-edu-line py-2.5 text-sm font-bold text-edu-blue-grey hover:bg-edu-paper-2"
-                onClick={() => { setAddStudentOpen(false); setAddEmail(""); setAddFirstName(""); }}
+                onClick={() => { setAddStudentOpen(false); setAddName(""); setAddEmail(""); setAddPhone(""); }}
               >
                 Cancel
               </button>
               <button
                 className="flex-1 rounded-lg bg-edu-moss py-2.5 text-sm font-bold text-white hover:bg-edu-moss-dark disabled:opacity-60"
-                disabled={!addEmail || !addFirstName || addStudentMutation.isPending}
-                onClick={() => addStudentMutation.mutate({ email: addEmail, firstName: addFirstName })}
+                disabled={!addName || !addEmail || !addPhone || addStudentMutation.isPending}
+                onClick={() => addStudentMutation.mutate({ name: addName, email: addEmail, phone: addPhone })}
               >
-                {addStudentMutation.isPending ? "Sending…" : "Add student"}
+                {addStudentMutation.isPending ? "Adding…" : "Add student"}
               </button>
             </div>
           </div>

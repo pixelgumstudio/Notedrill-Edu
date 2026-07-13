@@ -9,30 +9,23 @@ import TabBar from "@/components/edu/TabBar";
 import EduBackButton from "@/components/edu/EduBackButton";
 import { orgApi } from "@/lib/org-api";
 import { useAuth } from "@/context/AuthContext";
-import type { OrgStudent, OrgStudentActivity } from "@/types/edu";
+import type { OrgStudentDetail } from "@/types/edu";
 
 export default function StudentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState("quiz");
   const { orgToken } = useAuth();
 
-  const { data: student, isLoading: studentLoading } = useQuery<OrgStudent>({
+  const { data, isLoading } = useQuery<OrgStudentDetail>({
     queryKey: ["org-student", id],
     queryFn: () => orgApi.getOrgStudent(orgToken ?? "", id),
     enabled: !!orgToken && !!id,
     staleTime: 30_000,
   });
 
-  const { data: activity, isLoading: activityLoading } = useQuery<OrgStudentActivity>({
-    queryKey: ["org-student-activity", id],
-    queryFn: () => orgApi.getOrgStudentActivity(orgToken ?? "", id),
-    enabled: !!orgToken && !!id,
-    staleTime: 30_000,
-  });
-
-  const isLoading = studentLoading || activityLoading;
-  const s = student;
-  const a = activity;
+  const s = data?.student;
+  const quizHistory = data?.quizHistory ?? [];
+  const flashcardHistory = data?.flashcardHistory ?? [];
 
   return (
     <>
@@ -46,7 +39,7 @@ export default function StudentDetailPage() {
         <EduBackButton href="/edu/students" label="Back to all students" className="mb-4" />
 
         {/* Student header card */}
-        {studentLoading ? (
+        {isLoading ? (
           <div className="mb-6 h-28 animate-pulse rounded-xl bg-edu-line" />
         ) : s ? (
           <div
@@ -59,11 +52,12 @@ export default function StudentDetailPage() {
             <div>
               <h2 className="font-source-serif text-[19px] text-edu-moss-dark">{s.name}</h2>
               <p className="text-sm text-edu-blue-grey">{s.email}</p>
+              <p className="text-sm text-edu-blue-grey">{s.phone}</p>
             </div>
             <div className="ml-auto flex flex-wrap gap-6">
-              <Stat label="Quizzes" value={s.quizCount} />
-              <Stat label="Avg score" value={s.avgScore != null ? `${s.avgScore}%` : "—"} />
-              <Stat label="Flashcards" value={s.flashcardCount} />
+              <Stat label="Quizzes" value={s.quizzesTaken} />
+              <Stat label="Avg score" value={s.averageScore != null ? `${s.averageScore}%` : "—"} />
+              <Stat label="Flashcards" value={s.flashcardSessions} />
               <Stat label="Last active" value={s.lastActive ?? "Never"} />
             </div>
           </div>
@@ -106,16 +100,18 @@ export default function StudentDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(a?.quizHistory ?? []).map((entry) => (
+                  {quizHistory.map((entry) => (
                     <tr key={entry.id} className="border-b border-edu-line last:border-b-0">
-                      <td className="px-5 py-3.5 text-sm text-edu-ink">{entry.fileTitle}</td>
+                      <td className="px-5 py-3.5 text-sm text-edu-ink">{entry.noteTitle}</td>
                       <td className="px-5 py-3.5">
-                        <ScorePill score={entry.score} />
+                        <ScorePill score={entry.scorePercentage} />
                       </td>
-                      <td className="px-5 py-3.5 text-sm text-edu-blue-grey">{entry.date}</td>
+                      <td className="px-5 py-3.5 text-sm text-edu-blue-grey">
+                        {new Date(entry.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </td>
                     </tr>
                   ))}
-                  {(a?.quizHistory ?? []).length === 0 && (
+                  {quizHistory.length === 0 && (
                     <tr>
                       <td colSpan={3} className="px-5 py-8 text-center text-sm text-edu-blue-grey">
                         No quiz history yet.
@@ -131,19 +127,21 @@ export default function StudentDetailPage() {
                 <thead>
                   <tr className="bg-edu-paper-2">
                     <Th>File</Th>
-                    <Th>Cards reviewed</Th>
+                    <Th>Cards</Th>
                     <Th>Date</Th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(a?.flashcardHistory ?? []).map((entry) => (
+                  {flashcardHistory.map((entry) => (
                     <tr key={entry.id} className="border-b border-edu-line last:border-b-0">
-                      <td className="px-5 py-3.5 text-sm text-edu-ink">{entry.fileTitle}</td>
-                      <td className="px-5 py-3.5 text-sm text-edu-ink">{entry.cardsReviewed}</td>
-                      <td className="px-5 py-3.5 text-sm text-edu-blue-grey">{entry.date}</td>
+                      <td className="px-5 py-3.5 text-sm text-edu-ink">{entry.noteTitle}</td>
+                      <td className="px-5 py-3.5 text-sm text-edu-ink">{entry.cardCount}</td>
+                      <td className="px-5 py-3.5 text-sm text-edu-blue-grey">
+                        {new Date(entry.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </td>
                     </tr>
                   ))}
-                  {(a?.flashcardHistory ?? []).length === 0 && (
+                  {flashcardHistory.length === 0 && (
                     <tr>
                       <td colSpan={3} className="px-5 py-8 text-center text-sm text-edu-blue-grey">
                         No flashcard history yet.

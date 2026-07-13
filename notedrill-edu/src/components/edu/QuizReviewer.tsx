@@ -7,62 +7,40 @@ import EmptyState from "./EmptyState";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface QuizReviewerProps {
-  quizId: string;
   questions: AdminQuizQuestion[];
   onQuestionsChange: (updated: AdminQuizQuestion[]) => void;
-  /** Called when a question is saved; undefined = local-only. */
-  onSaveQuestion?: (
-    quizId: string,
-    questionIndex: number,
-    data: {
-      questionText: string;
-      options: string[];
-      correctAnswer: number;
-      explanation: string;
-    },
-  ) => Promise<void>;
   onToast: (msg: string) => void;
 }
 
 interface QuestionDraft {
-  questionText: string;
-  options: string[];          // raw text for each option
-  correctAnswer: number;      // 0-based index of correct option
+  question: string;
+  options: string[];
+  correctIndex: number;
   explanation: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function letterToIndex(letter: unknown): number {
-  if (typeof letter === "number") return letter;
-  if (typeof letter !== "string" || !letter) return -1;
-  return "ABCD".indexOf(letter.toUpperCase());
-}
-
 function buildDraft(q: AdminQuizQuestion): QuestionDraft {
   return {
-    questionText: q.question || q.questionText || "",
-    options: q.options.map((o) => o.text),
-    correctAnswer: letterToIndex(q.correctAnswer),
+    question: q.question,
+    options: [...q.options],
+    correctIndex: Math.max(0, q.options.indexOf(q.correctAnswer)),
     explanation: q.explanation ?? "",
   };
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
+// Edits are local-only — there's no question-update endpoint on the backend,
+// so nothing here is persisted server-side (a page refresh reverts it).
 
 export default function QuizReviewer({
-  quizId,
   questions,
   onQuestionsChange,
-  onSaveQuestion,
   onToast,
 }: QuizReviewerProps) {
-  // Index of the question currently in edit mode (null = none)
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [draft, setDraft] = useState<QuestionDraft | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-
-  // ── Edit handlers ──────────────────────────────────────────────────────────
 
   function openEdit(idx: number) {
     setDraft(buildDraft(questions[idx]));
@@ -74,45 +52,23 @@ export default function QuizReviewer({
     setDraft(null);
   }
 
-  async function saveEdit() {
+  function saveEdit() {
     if (editingIdx === null || !draft) return;
-    setIsSaving(true);
-    try {
-      // Update the in-memory question list
-      const updated = questions.map((q, i) =>
-        i !== editingIdx
-          ? q
-          : {
-              ...q,
-              question: draft.questionText,
-              questionText: draft.questionText,
-              options: draft.options.map((text, oi) => ({ id: `option-${oi}`, text })),
-              correctAnswer: draft.correctAnswer,
-              explanation: draft.explanation,
-            },
-      );
-      onQuestionsChange(updated);
-
-      // Persist to backend if handler provided
-      if (onSaveQuestion) {
-        await onSaveQuestion(quizId, editingIdx, {
-          questionText: draft.questionText,
-          options: draft.options,
-          correctAnswer: draft.correctAnswer,
-          explanation: draft.explanation,
-        });
-      }
-
-      onToast("Question updated");
-      setEditingIdx(null);
-      setDraft(null);
-    } catch {
-      onToast("Failed to save — changes kept locally");
-      setEditingIdx(null);
-      setDraft(null);
-    } finally {
-      setIsSaving(false);
-    }
+    const updated = questions.map((q, i) =>
+      i !== editingIdx
+        ? q
+        : {
+            ...q,
+            question: draft.question,
+            options: draft.options,
+            correctAnswer: draft.options[draft.correctIndex],
+            explanation: draft.explanation,
+          },
+    );
+    onQuestionsChange(updated);
+    onToast("Question updated (this session only)");
+    setEditingIdx(null);
+    setDraft(null);
   }
 
   function updateDraftOption(optIdx: number, value: string) {
@@ -138,12 +94,12 @@ export default function QuizReviewer({
   return (
     <div className="space-y-3">
       {questions.map((q, idx) => {
-        const correctIdx = letterToIndex(q.correctAnswer);
+        const correctIdx = q.options.indexOf(q.correctAnswer);
         const isEditing = editingIdx === idx;
 
         return (
           <div
-            key={q.id ?? idx}
+            key={idx}
             className={[
               "overflow-hidden rounded-xl border bg-white transition-colors",
               isEditing ? "border-edu-moss" : "border-edu-line",
@@ -163,8 +119,8 @@ export default function QuizReviewer({
                 </label>
                 <textarea
                   rows={2}
-                  value={draft.questionText}
-                  onChange={(e) => setDraft({ ...draft, questionText: e.target.value })}
+                  value={draft.question}
+                  onChange={(e) => setDraft({ ...draft, question: e.target.value })}
                   className="mb-4 w-full resize-none rounded-lg border-[1.5px] border-edu-line bg-edu-paper-2 p-2.5 text-sm text-edu-ink focus:border-edu-moss focus:outline-none"
                 />
 
@@ -178,13 +134,10 @@ export default function QuizReviewer({
                       <input
                         type="radio"
                         name={`correct-${idx}`}
-                        checked={draft.correctAnswer === optIdx}
-                        onChange={() => setDraft({ ...draft, correctAnswer: optIdx })}
+                        checked={draft.correctIndex === optIdx}
+                        onChange={() => setDraft({ ...draft, correctIndex: optIdx })}
                         className="h-4 w-4 accent-[#3b7a57] cursor-pointer"
                       />
-                      <span className="w-5 shrink-0 text-[11.5px] font-bold text-edu-blue-grey">
-                        {"ABCD"[optIdx]}.
-                      </span>
                       <input
                         type="text"
                         value={optText}
@@ -215,10 +168,10 @@ export default function QuizReviewer({
                   </button>
                   <button
                     onClick={saveEdit}
-                    disabled={isSaving || !draft.questionText.trim() || draft.options.some((o) => !o.trim())}
+                    disabled={!draft.question.trim() || draft.options.some((o) => !o.trim())}
                     className="flex-1 rounded-lg bg-edu-moss py-2 text-sm font-bold text-white hover:bg-edu-moss-dark disabled:opacity-60"
                   >
-                    {isSaving ? "Saving…" : "Save"}
+                    Save
                   </button>
                 </div>
               </div>
@@ -232,7 +185,7 @@ export default function QuizReviewer({
                       Question {idx + 1} of {questions.length}
                     </p>
                     <p className="text-[14.5px] font-semibold leading-snug text-edu-ink">
-                      {q.question || q.questionText}
+                      {q.question}
                     </p>
                   </div>
                   <button
@@ -249,7 +202,7 @@ export default function QuizReviewer({
                     const isCorrect = optIdx === correctIdx;
                     return (
                       <div
-                        key={opt.id ?? optIdx}
+                        key={optIdx}
                         className={[
                           "flex items-start gap-2 rounded-lg border px-3 py-2 text-[13px]",
                           isCorrect
@@ -265,9 +218,9 @@ export default function QuizReviewer({
                               : "border-edu-line bg-white text-edu-blue-grey",
                           ].join(" ")}
                         >
-                          {isCorrect ? "✓" : "ABCD"[optIdx]}
+                          {isCorrect ? "✓" : ""}
                         </span>
-                        {opt.text}
+                        {opt}
                       </div>
                     );
                   })}
