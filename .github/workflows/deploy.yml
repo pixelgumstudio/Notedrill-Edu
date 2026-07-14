@@ -24,4 +24,4 @@ jobs:
             npm run build --workspace=notedrill-edu
             pm2 restart notedrill-edu-web
             cp /root/notedrill-edu/Caddyfile /etc/caddy/Caddyfile
-            systemctl reload caddy
+            systemctl restart caddy
