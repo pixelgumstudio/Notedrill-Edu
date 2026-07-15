@@ -172,10 +172,6 @@ export const orgApi = {
   getQuizzesAndFlashcards: (token: string, noteId: string): Promise<OrgGeneratedSetSummary[]> =>
     orgFetch<OrgGeneratedSetSummary[]>(`/org/files/${noteId}/quizzes-and-flashcards`, { token }),
 
-  /** GET /quiz/:id */
-  getQuizById: (token: string, id: string): Promise<AdminGeneratedQuiz> =>
-    orgFetch<AdminGeneratedQuiz>(`/quiz/${id}`, { token }),
-
   /** GET /flashcards/:id */
   getFlashcardSetById: (token: string, id: string): Promise<AdminGeneratedFlashcardSet> =>
     orgFetch<AdminGeneratedFlashcardSet>(`/flashcards/${id}`, { token }),

@@ -181,6 +181,12 @@ function AssessmentsPanel({
             onToast={onToast}
           />
         )
+      ) : selectedSet ? (
+        <div className="rounded-xl border border-edu-line bg-edu-paper-2 py-10 text-center text-sm text-edu-blue-grey">
+          {selectedSet.type === "quiz"
+            ? "This quiz can't be reopened for review — export it from the menu above, or generate a new one."
+            : "Could not load this set. Try selecting it again."}
+        </div>
       ) : (
         <div className="rounded-xl border border-edu-line bg-edu-paper-2 py-10 text-center text-sm text-edu-blue-grey">
           Select a set above to start reviewing.
@@ -304,17 +310,19 @@ export default function FileWorkspacePage() {
     const set = allSets.find((s) => s.id === selectedSetId);
     if (!set) return;
 
+    // Quizzes generated before this session can't be reopened — there's no
+    // working GET-by-id for a quiz on the backend (it 404s). Skip the call
+    // entirely rather than firing a request that's guaranteed to fail and
+    // surfacing a spurious "could not load" toast for it.
+    if (set.type === "quiz") return;
+
     let cancelled = false;
     setContentLoading(true);
-    const fetcher =
-      set.type === "quiz"
-        ? orgApi.getQuizById(orgToken, selectedSetId).then((q) => ({ type: "quiz" as const, questions: q.questions }))
-        : orgApi.getFlashcardSetById(orgToken, selectedSetId).then((s) => ({ type: "flashcardSet" as const, cards: s.cards }));
-
-    fetcher
-      .then((content) => {
+    orgApi
+      .getFlashcardSetById(orgToken, selectedSetId)
+      .then((s) => {
         if (cancelled) return;
-        setSetContents((prev) => ({ ...prev, [selectedSetId]: content }));
+        setSetContents((prev) => ({ ...prev, [selectedSetId]: { type: "flashcardSet", cards: s.cards } }));
       })
       .catch(() => {
         if (!cancelled) showToast("Could not load that set — please try again");
