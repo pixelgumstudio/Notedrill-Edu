@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 interface ActionMenuProps {
@@ -14,6 +14,12 @@ interface ActionMenuProps {
   children: (close: () => void) => React.ReactNode;
 }
 
+type Coords =
+  | { top: number; bottom?: undefined; left: number; right: number }
+  | { bottom: number; top?: undefined; left: number; right: number };
+
+const MENU_MARGIN = 8;
+
 /**
  * A "⋯" trigger whose menu renders in a portal on `document.body`, positioned
  * via the trigger's bounding rect. This keeps it from being clipped by
@@ -22,20 +28,32 @@ interface ActionMenuProps {
  */
 export default function ActionMenu({ label = "More actions", align = "right", onOpen, children }: ActionMenuProps) {
   const [open, setOpen] = useState(false);
-  const [coords, setCoords] = useState<{ top: number; left: number; right: number } | null>(null);
+  const [coords, setCoords] = useState<Coords | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const close = useCallback(() => setOpen(false), []);
 
+  /**
+   * Anchors below the trigger by default, but flips above it when there
+   * isn't enough room below (and there's more room above) — otherwise a
+   * trigger near the bottom of the page renders a menu that runs off-screen.
+   * Uses the menu's already-rendered height when available (menuRef), so the
+   * flip decision is accurate rather than a fixed-height guess.
+   */
   const updatePosition = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
+    const menuHeight = menuRef.current?.offsetHeight ?? 0;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const openUpward = spaceBelow < menuHeight + MENU_MARGIN && spaceAbove > spaceBelow;
+
     setCoords({
-      top: rect.bottom + 4,
+      ...(openUpward ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
       left: rect.left,
       right: window.innerWidth - rect.right,
-    });
+    } as Coords);
   }, []);
 
   const handleTriggerClick = (e: React.MouseEvent) => {
@@ -49,6 +67,15 @@ export default function ActionMenu({ label = "More actions", align = "right", on
       return next;
     });
   };
+
+  // Re-measure once the menu has actually mounted — the first updatePosition
+  // (above, in handleTriggerClick) ran before it existed, so it couldn't
+  // know the real height to flip against. useLayoutEffect keeps this
+  // correction invisible to the user (applied before the browser paints).
+  useLayoutEffect(() => {
+    if (!open) return;
+    updatePosition();
+  }, [open, updatePosition]);
 
   useEffect(() => {
     if (!open) return;
@@ -95,7 +122,7 @@ export default function ActionMenu({ label = "More actions", align = "right", on
             role="menu"
             className="fixed z-[1500] min-w-[220px] overflow-hidden rounded-lg border border-edu-line bg-white"
             style={{
-              top: coords.top,
+              ...(coords.top !== undefined ? { top: coords.top } : { bottom: coords.bottom }),
               ...(align === "right" ? { right: coords.right } : { left: coords.left }),
               boxShadow: "0 6px 20px rgba(21,35,31,0.15)",
             }}
