@@ -15,6 +15,16 @@ export type ApiFetchOptions = RequestInit & {
   kind: "org" | "student";
 };
 
+/** Thrown on any non-2xx response. Carries the HTTP status so callers can special-case things like 504 (gateway timeout on a long-running request that may still complete server-side). */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 /** Fetch from backend.notedrill.com and unwrap the `.data` field from the `{success, message, data}` envelope. */
 export async function apiFetch<T>(path: string, options: ApiFetchOptions): Promise<T> {
   const { token, kind, ...fetchOptions } = options;
@@ -33,8 +43,9 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions): Promi
   }
 
   if (!res.ok) {
+    // A 504 from the gateway has no JSON body (it's the proxy's own error page, not ours).
     const body = await res.json().catch(() => ({}));
-    throw new Error((body as { message?: string }).message ?? `API error ${res.status}`);
+    throw new ApiError((body as { message?: string }).message ?? `API error ${res.status}`, res.status);
   }
 
   const json = await res.json();

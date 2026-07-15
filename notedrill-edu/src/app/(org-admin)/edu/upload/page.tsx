@@ -7,10 +7,40 @@ import UploadZone from "@/components/edu/UploadZone";
 import FileCard from "@/components/edu/FileCard";
 import SectionEyebrow from "@/components/edu/SectionEyebrow";
 import { orgApi } from "@/lib/org-api";
+import { ApiError } from "@/lib/api-fetch";
 import { useAuth } from "@/context/AuthContext";
 import type { OrgNoteSummary } from "@/types/edu";
 
 type SourceType = "pdf" | "text" | "youtube" | "image";
+
+const POLL_INTERVAL_MS = 5000;
+const POLL_MAX_ATTEMPTS = 24; // ~2 minutes of polling after a gateway timeout
+
+/**
+ * The gateway in front of backend.notedrill.com can 504 on slow extractions
+ * even though the backend keeps processing and finishes the note. When that
+ * happens we don't have the note id back (the POST never returned one), so
+ * fall back to polling the list for a note matching this upload.
+ */
+async function pollForUploadedNote(
+  token: string,
+  title: string,
+  uploadedAfter: number,
+): Promise<OrgNoteSummary | null> {
+  for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    try {
+      const { items } = await orgApi.getNotes(token, { limit: 10 });
+      const match = items.find(
+        (n) => n.title === title && new Date(n.createdAt).getTime() >= uploadedAfter,
+      );
+      if (match && match.status !== "processing") return match;
+    } catch {
+      // Transient error while polling — just try again next tick.
+    }
+  }
+  return null;
+}
 
 function formatNoteSubtitle(note: OrgNoteSummary): string {
   const uploaded = new Date(note.createdAt).toLocaleDateString("en-US", {
@@ -44,11 +74,25 @@ export default function UploadPage() {
   });
 
   // ── Upload + generate mutation ───────────────────────────────────────────────
-  // POST /org/files responds synchronously once the AI summary is ready — no
-  // background job/polling on this backend.
+  // POST /org/files normally responds once the AI summary is ready, but on a
+  // slow extraction the gateway can 504 before the backend finishes. The work
+  // isn't lost — it completes server-side — so on a 504 we poll the notes
+  // list instead of surfacing an error, since we never got a note id back.
   const uploadMutation = useMutation({
-    mutationFn: (payload: { source: SourceType; title: string; file: File | null; text?: string }) =>
-      orgApi.uploadContent(orgToken ?? "", payload),
+    mutationFn: async (payload: { source: SourceType; title: string; file: File | null; text?: string }) => {
+      const uploadedAfter = Date.now();
+      try {
+        return await orgApi.uploadContent(orgToken ?? "", payload);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 504) {
+          showToast("Still processing — this is taking a bit longer than usual…");
+          const note = await pollForUploadedNote(orgToken ?? "", payload.title, uploadedAfter);
+          if (note) return note;
+          throw new Error("Still working on it. Check back in a minute — it'll show up under Recently uploaded.");
+        }
+        throw err;
+      }
+    },
     onSuccess: (note) => {
       showToast("Note created successfully!");
       queryClient.invalidateQueries({ queryKey: ["org-notes"] });

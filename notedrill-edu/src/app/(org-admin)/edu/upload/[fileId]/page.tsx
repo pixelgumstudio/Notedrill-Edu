@@ -241,11 +241,15 @@ export default function FileWorkspacePage() {
   const queryClient = useQueryClient();
 
   // ── Server state ──────────────────────────────────────────────────────────
+  // While extraction/summary generation is still running, poll instead of
+  // requiring a manual refresh — the backend can take a while and a gateway
+  // 504 on the original upload doesn't stop it from finishing server-side.
   const { data: note, isLoading: noteLoading } = useQuery({
     queryKey: ["org-note", fileId],
     queryFn: () => orgApi.getNoteById(orgToken ?? "", fileId),
     enabled: !!orgToken && !!fileId && fileId !== "undefined",
     staleTime: 30_000,
+    refetchInterval: (query) => (query.state.data?.status === "processing" ? 5000 : false),
   });
 
   const { data: sets = [] } = useQuery({

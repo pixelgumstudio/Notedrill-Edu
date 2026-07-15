@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import TabBar from "@/components/edu/TabBar";
 import SummaryBox from "@/components/edu/SummaryBox";
 import ScorePill from "@/components/edu/ScorePill";
@@ -23,6 +23,7 @@ export default function FileDetailPage() {
   const { noteId } = useParams<{ noteId: string }>();
   const router = useRouter();
   const { studentToken } = useAuth();
+  const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState("notes");
   const [genQuizOpen, setGenQuizOpen] = useState(false);
@@ -79,6 +80,15 @@ export default function FileDetailPage() {
       studentApi.generateFlashcards(studentToken ?? "", noteId, Number(flashCount)),
     onSuccess: (set) => {
       setGenFlashOpen(false);
+      // The flashcards page looks this set up by re-querying the same
+      // ["student-flash-history", noteId] cache key. Seed it directly with
+      // the set we just got back instead of relying on a refetch, since the
+      // cache from this page (30s staleTime) would otherwise serve the old
+      // list that doesn't include it yet.
+      queryClient.setQueryData<{ items: StudentFlashcardSet[] }>(
+        ["student-flash-history", noteId],
+        (old) => ({ items: [set, ...(old?.items ?? [])] }),
+      );
       router.push(`/learn/files/${noteId}/flashcards?setId=${set.id}`);
     },
     onError: (err: Error) => {
