@@ -11,6 +11,7 @@ import { orgApi } from "@/lib/org-api";
 import { useAuth } from "@/context/AuthContext";
 import BrandMark from "@/components/edu/BrandMark";
 import Toast from "@/components/edu/Toast";
+import PasswordInput from "@/components/edu/PasswordInput";
 
 export default function OrgLoginPage() {
   return (
@@ -92,9 +93,8 @@ function OrgLoginPageInner() {
           </Field>
 
           <Field label="Password" error={errors.password?.message}>
-            <input
+            <PasswordInput
               {...register("password")}
-              type="password"
               placeholder="••••••••"
               className={inputCls(!!errors.password)}
             />

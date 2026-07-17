@@ -11,6 +11,7 @@ import { orgApi } from "@/lib/org-api";
 import { useAuth } from "@/context/AuthContext";
 import BrandMark from "@/components/edu/BrandMark";
 import Toast from "@/components/edu/Toast";
+import PasswordInput from "@/components/edu/PasswordInput";
 
 const SCHOOL_TYPES = [
   { value: "primary", label: "Primary School" },
@@ -199,9 +200,8 @@ export default function OrgRegisterPage() {
           </Field>
 
           <Field label="Password" error={errors.password?.message}>
-            <input
+            <PasswordInput
               {...register("password")}
-              type="password"
               placeholder="At least 8 characters"
               className={inputCls(!!errors.password)}
             />
